@@ -1,0 +1,59 @@
+{
+  "id": "4e-functions-js",
+  "title": "Skallalah 4e Functions",
+  "description": "Package of functions used in 4e system, for application of effect, damage, and automatisation.",
+  "version": "1.0.0",
+  "packs": [],
+  "system": [],
+  "dependencies": [],
+  "scripts": [
+    "scripts/character.js",
+    "scripts/actor.js",
+    "scripts/helper.js",
+    "scripts/scene.js",
+    "scripts/target.js"
+  ],
+  "compatibility": {
+    "minimum": "11",
+    "verified": "12",
+    "maximum": "12"
+  },
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "languages/en.json"
+    }
+  ],
+  "relationships": {
+    "requires": [
+      {
+        "id": "ActiveAuras",
+        "type": "module",
+        "compatibility": {}
+      },
+      {
+        "id": "lib-wrapper",
+        "type": "module",
+        "compatibility": {}
+      },
+      {
+        "id": "socketlib",
+        "type": "module",
+        "compatibility": {}
+      },
+      {
+        "id": "sequencer",
+        "type": "module",
+        "compatibility": {}
+      }
+    ],
+    "systems": [
+      {
+        "id": "dnd4e",
+        "type": "system",
+        "compatibility": {}
+      }
+    ]
+  }
+}
