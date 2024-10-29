@@ -32,10 +32,10 @@ class Character {
      * @returns {Character}
      */
     static fromName(name) {
-        const actor = Actor4e.findActorByName("Grund Coeur-d'Ours")
+        const actor = Actor4e.findActorByName(name)
 
         if (!actor) throw Error(`no actor with name ${name}`)
-        
+
         return new Character(actor);
     }
 
@@ -45,13 +45,31 @@ class Character {
      * @returns {boolean}
      */
     isAdjacent(character) {
+        /** @todo replace this with current target methods */
         return this.tokens.some(token => character.tokens.some(otherToken => Scene4e.isAdjacent(token, otherToken)));
     }
 
     // Apply Changes
 
-    async heal(type = 'hp', value, surgeCost = 0) {
-        return;
+    /**
+     * 
+     * @param {number} surge 
+     * @param {number} cost 
+     * @param {number} additional 
+     */
+    async heal(surge, cost, additional = 0) {
+        return Helper4e.heal(this._actor, additional, cost, surge);
+    }
+
+    /**
+     * 
+     * @param {number} value 
+     */
+    async tempHeal(value) {
+        console.log('HEHO', value)
+        console.log('actor', this._actor)
+
+        return Helper4e.tempHeal(this._actor, value);
     }
 
     async damage(value) {
@@ -61,6 +79,8 @@ class Character {
     async addEffect() {
         return;
     }
+
+    // derived getters
 
     get tokens() {
         const tokens = this._actor.getActiveTokens(true);
@@ -74,6 +94,10 @@ class Character {
         if (this.tokens?.length > 1) throw new Error(`multiple tokens detected in scene, use this.tokens instead`)
 
         return this.tokens[0];
+    }
+
+    get name() {
+        return this._actor.name;
     }
 
     /**

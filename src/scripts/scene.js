@@ -3,6 +3,12 @@ class Scene4e {
         return game.scenes.current;
     }
 
+    static getCurrentSceneActors() {
+        const scene = this.getCurrent();
+
+        return scene?.tokens?.map(t => t.actor) ?? [];
+    }
+
     static getCurrentScenesTokens() {
         const scene = this.getCurrent()
 
@@ -20,6 +26,28 @@ class Scene4e {
 
     static getTokenAtLocation(x, y) {
         return this.getCurrentScenesTokens().find(t => this.isAtSameLocation(t, x, y));
+    }
+
+    /**
+     * 
+     * @param {any} origin 
+     * @param {Token} target
+     * @param {number} radius 
+     */
+    static isWithin(origin, target, radius) {
+        const originTrueAxis = Scene4e.getTrueAxis(origin);
+        const targetTrueAxis = Scene4e.getTrueAxis(target);
+
+        return (
+            Math.floor(canvas.grid.measureDistance(originTrueAxis, targetTrueAxis)) <= radius &&
+            (origin.x != target.x || origin.y != target.y)
+        );
+    }
+
+    static getTrueAxis(coordinates) {
+        const center = canvas.grid.getCenter(coordinates.x, coordinates.y);
+
+        return { x: center[0], y: center[1] }
     }
 
     static isAdjacent(token, target) {

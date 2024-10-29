@@ -1,16 +1,21 @@
 class Helper4e {
-    static async heal(token, value, surgeConsumed, surgeValue) {
+    static async heal(actor, value, surgeConsumed, surgeValue) {
         const surge = { surgeAmount: surgeConsumed, surgeValueAmount: surgeValue };
 
-        return await game.macros.getName('ApplyHeal').execute({ value, surge, actorIdentifier: token.name });
+        return await game.macros.getName('ApplyHeal').execute({ value, surge, actorIdentifier: actor.name });
     }
 
-    static async tempHeal(token, value) {
-        return await game.macros.getName('ApplyTempHp').execute({ actorIdentifier: token.name, value });
+    /**
+     * 
+     * @param {Actor} actor 
+     * @param {number} value 
+     */
+    static async tempHeal(actor, value) {
+        return await game.macros.getName('ApplyTempHp').execute({ actorIdentifier: actor.name, value });
     }
 
     static async damage() {
-
+        // todo
     }
 
     static async macroApplyHeal(scope) {

@@ -7,11 +7,12 @@
   "system": [],
   "dependencies": [],
   "scripts": [
-    "scripts/character.js",
     "scripts/actor.js",
     "scripts/helper.js",
     "scripts/scene.js",
-    "scripts/target.js"
+    "scripts/character.js",
+    "scripts/target.js",
+    "scripts/user.js"
   ],
   "compatibility": {
     "minimum": "11",
