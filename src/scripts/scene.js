@@ -30,10 +30,6 @@ class Scene4e {
     }
 
     static getAdjacentTokens(targetToken, disposition) {
-        console.log(this.getCurrentScenesTokens().map(c => c.name + ' ' + canvas.grid.measureDistance(targetToken, c)))
-        console.log(this.getCurrentScenesTokens().filter((token) =>
-            token.disposition === disposition && this.isAdjacent(targetToken, token)
-        ))
         return this.getCurrentScenesTokens().filter((token) =>
             token.disposition === disposition && this.isAdjacent(targetToken, token)
         );

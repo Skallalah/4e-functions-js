@@ -3,6 +3,11 @@ class Actor4e {
         return game.actors.getName(name);
     }
 
+    /**
+     * 
+     * @param {string} name 
+     * @returns {Token}
+     */
     static findTokenByName(name) {
         return Scene4e.getCurrentScenesTokens().find(token => token.name === name);
     }
@@ -10,6 +15,4 @@ class Actor4e {
     static getTokensByName(name) {
         return Scene4e.getCurrentScenesTokens().filter(token => token.name === name);
     }
-
-
 }

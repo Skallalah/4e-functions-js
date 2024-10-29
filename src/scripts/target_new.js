@@ -1,16 +1,40 @@
-class Target4e {
-    static test() {
-        const scene = Scene4e.getCurrent();
+class Target {
+    _coordinates = { x: null, y: null };
+    _range = 0; // range self by default
+    _size = 0; // 
+    _type = 'area burst'; // area_burst by default for selection, useless for now
 
-        console.log(scene);
+    /**
+     * 
+     * @param {Character} character
+     * @returns {Target}
+     */
+    static fromCharacter(character) {
+        
+    }
 
-        console.log(Scene4e.getCurrentScenesTokens())
+    /**
+     * 
+     * @param {number} x 
+     * @param {number} y
+     * @returns {Target}
+     */
+    static fromCoordinates(x, y) {
 
-        const actor = Actor4e.findActorByName("Grund Coeur-d'Ours");
+    }
 
-        console.log(actor.system.abilities?.con?.mod)
+    /**
+     * @returns {Character[]}
+     */
+    select() {
+        return [];
+    }
 
-        console.log(Actor4e.getTokensByName("Esprit Protecteur"))
+    /**
+     * 
+     */
+    teleport() {
+
     }
 
     /**

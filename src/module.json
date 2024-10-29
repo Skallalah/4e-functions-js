@@ -2,7 +2,7 @@
   "id": "4e-functions-js",
   "title": "Skallalah 4e Functions",
   "description": "Package of functions used in 4e system, for application of effect, damage, and automatisation.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "packs": [],
   "system": [],
   "dependencies": [],
