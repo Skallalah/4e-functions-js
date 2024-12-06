@@ -66,9 +66,6 @@ class Character {
      * @param {number} value 
      */
     async tempHeal(value) {
-        console.log('HEHO', value)
-        console.log('actor', this._actor)
-
         return Helper4e.tempHeal(this._actor, value);
     }
 
@@ -96,6 +93,9 @@ class Character {
         return this.tokens[0];
     }
 
+    /**
+     * @return {string}
+     */
     get name() {
         return this._actor.name;
     }
@@ -108,6 +108,8 @@ class Character {
     getSystem(owned = true) {
         if (owned) {
             return this._actor.system;
+        } else {
+            return Helper4e.getSystem(this._actor.getSystem()?.name)
         }
     }
 }

@@ -2,7 +2,9 @@ class Target {
     _origins = [];
     _range = 0; // range self by default
     _radius = 0; // radius in square around the main square
-    _type = 'area burst'; // area_burst by default for selection, useless for now
+
+    _type = 'creatures'; // the type of targets concerned by the power
+    _disposition = null; // the disposition of the caster, null by default
 
     constructor(origins, range = 0, radius = 0) {
         this._origins = origins;
@@ -26,12 +28,14 @@ class Target {
     static fromCharacter(character) {
         const origins = character.tokens.map(t => ({ x: t.x, y: t.y }));
 
-        return new Target(origins);
+        console.log('token', character.token?.document)
+
+        return new Target(origins).disposition(character.token?.document.disposition);
     }
 
     /**
      * 
-     * @param {number} x 
+     * @param {number} x
      * @param {number} y
      * @returns {Target}
      */
@@ -55,6 +59,26 @@ class Target {
      */
     radius(radius) {
         this._radius = radius;
+
+        return this;
+    }
+
+    /**
+     * 
+     * @param {'creatures' | 'allies' | 'enemies'} type 
+     */
+    type(type) {
+        this._type = type;
+
+        return this;
+    }
+
+    /**
+     * 
+     * @param {number} disposition 
+     */
+    disposition(disposition) {
+        this._disposition = disposition;
 
         return this;
     }
@@ -120,7 +144,22 @@ class Target {
     get() {
         const tokens = Scene4e.getCurrentScenesTokens();
 
-        const targets = tokens.filter(t => this._origins.some(origin => Scene4e.isWithin(origin, t, this._radius)));
+        let targets = tokens.filter(t => this._origins.some(origin => Scene4e.isWithin(origin, t, this._radius)));
+
+        if (this._type !== 'creatures' && this._disposition !== null) {
+            const typeFilter = (token) => {
+                switch (this._type) {
+                    case 'allies':
+                        return this._disposition === token?.disposition;
+                    case 'enemies':
+                        return this._disposition !== token?.disposition;
+                    default:
+                        return true;
+                }
+            };
+
+            targets = targets.filter(typeFilter)
+        }
 
         return [...new Set(targets.map(t => t.actor))].map(actor => Character.fromActor(actor));
     }

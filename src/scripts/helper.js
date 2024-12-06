@@ -29,4 +29,8 @@ class Helper4e {
 
         return true;
     }
+
+    static async system(actor) {
+        return game.macros.getName('GetActorData').execute({ actorName: actor.name })
+    }
 }
