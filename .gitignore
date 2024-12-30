@@ -24,5 +24,6 @@ dist-ssr
 *.sw?
 
 # Generated files
-scripts
-module.json
+/scripts/*
+/module.json
+/languages
