@@ -30,6 +30,18 @@ class Helper4e {
         return true;
     }
 
+    static async macroApplyEffect(scope) {
+        const { tokenIdentifier, effectData } = scope;
+
+        const token = Actor4e.findTokenByIdentifier(tokenIdentifier);
+
+        const actor = token.actor;
+
+        const activeEffect = new ActiveEffect(effectData);
+
+        await actor.createEmbeddedDocuments('ActiveEffect', [activeEffect]);
+    }
+
     static async system(actor) {
         return game.macros.getName('GetActorData').execute({ actorName: actor.name })
     }

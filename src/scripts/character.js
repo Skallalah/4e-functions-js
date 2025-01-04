@@ -28,6 +28,17 @@ class Character {
 
     /**
      * 
+     * @param {Token} token 
+     * @returns {Character}
+     */
+    static fromToken(token) {
+        const actor = token.actor;
+
+        return new Character(actor);
+    }
+
+    /**
+     * 
      * @param {string} name 
      * @returns {Character}
      */

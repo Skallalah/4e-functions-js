@@ -139,6 +139,8 @@ class Target {
     }
 
     /**
+     * Get the Character from the Target object.
+     * 
      * @returns {Character[]}
      */
     get() {
