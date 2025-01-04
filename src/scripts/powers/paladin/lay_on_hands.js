@@ -23,7 +23,6 @@ async function main(ref) {
         return;
     }
 
-    // @todo: add type('allies')
     const targets = await Target.fromCharacter(paladin).range(1).type('allies').selectCharacters(ref.item.img);
 
     if (!targets.length && targets.length !== 1) return;

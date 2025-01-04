@@ -111,6 +111,10 @@ class Character {
         return this._actor.name;
     }
 
+    get combatant() {
+        return game.combat.combatants.find(c => c.tokenId === this.token.id);
+    }
+
     /**
      * 
      * @param {boolean} owned If the script is triggered by the current token owner

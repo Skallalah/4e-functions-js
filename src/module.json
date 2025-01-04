@@ -11,6 +11,7 @@
     "scripts/helper.js",
     "scripts/scene.js",
     "scripts/character.js",
+    "scripts/effects.js",
     "scripts/target.js",
     "scripts/user.js"
   ],
