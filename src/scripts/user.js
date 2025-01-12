@@ -13,4 +13,14 @@ class User4e {
             user.updateTokenTargets(tokenIds)
         }
     }
+
+    /**
+     * 
+     * @return {Character[]} characters 
+     */
+    static getTargets() {
+        const user = game.user;
+
+        return user.targets.map(t => Character.fromToken(t));
+    }
 }

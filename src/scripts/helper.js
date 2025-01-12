@@ -30,16 +30,25 @@ class Helper4e {
         return true;
     }
 
-    static async macroApplyEffect(scope) {
+    static async applyEffect(scope) {
         const { tokenIdentifier, effectData } = scope;
 
-        const token = Actor4e.findTokenByIdentifier(tokenIdentifier);
+        return await game.macros.getName('ApplyEffectToToken').execute({ tokenIdentifier, effectData });
+    }
 
-        const actor = token.actor;
+    static async removeEffect(scope) {
+        const { tokenIdentifier, effectIdentifier } = scope;
 
-        const activeEffect = new ActiveEffect(effectData);
+        return await game.macros.getName('RemoveEffectByName').execute({ tokenIdentifier, effectIdentifier });
+    }
 
-        await actor.createEmbeddedDocuments('ActiveEffect', [activeEffect]);
+    static async replaceEffect(scope) {
+        const { tokenIdentifier, effectData } = scope;
+
+        const effectIdentifier = effectData.name;
+
+        await game.macros.getName('RemoveEffectByName').execute({ tokenIdentifier, effectIdentifier });
+        await game.macros.getName('ApplyEffectToToken').execute({ tokenIdentifier, effectData });
     }
 
     static async system(actor) {

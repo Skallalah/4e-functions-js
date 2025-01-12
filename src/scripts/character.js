@@ -84,8 +84,16 @@ class Character {
         return;
     }
 
-    async addEffect() {
-        return;
+    async addEffect(effect) {
+        const tokenIdentifier = this.token.id;
+
+        await Helper4e.applyEffect({ tokenIdentifier, effectData: effect });
+    }
+
+    async replaceEffect(effect) {
+        const tokenIdentifier = this.token.id;
+
+        await Helper4e.replaceEffect({ tokenIdentifier, effectData: effect });
     }
 
     // derived getters

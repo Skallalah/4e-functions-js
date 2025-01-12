@@ -13,7 +13,7 @@ async function applyMainHeal(item) {
     if (!targets?.length) return;
 
     for (const character of targets) {
-        const additionalHealValue = grundConMod + (spirit.isAdjacent(character) ? grundConMod : 0);
+        const additionalHealValue = 0 // grundConMod + (spirit.isAdjacent(character) ? grundConMod : 0);
 
         const heal = await character.heal(1, 1, additionalHealValue);
 
@@ -64,7 +64,7 @@ async function applyTempHealingToSpiritAdjacentTokens() {
 
 async function main(ref) {
     await applyMainHeal(ref.item);
-    await applyTempHealingToSpiritAdjacentTokens();
+    // await applyTempHealingToSpiritAdjacentTokens();
 }
 
 main(this);

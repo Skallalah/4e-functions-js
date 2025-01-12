@@ -1,21 +1,16 @@
 class Effect4e {
-    name;
-    description;
-    icon;
-
-    duration;
-
-
     /**
      * Create an effect from data with the corresponding duration
      * 
      * @param {Object} data The effect data, with name, description and icon
-     * @param {'endOfUserTurn'} duration 
+     * @param {'endOfUserTurn'} durationType 
      * @param {Character} origin
      */
-    static createEffect(data, duration, origin) {
+    static createEffect(data, durationType, origin) {
         if (!game.combat) {
             ui.notifications.warn(`There is no ongoing combat, cannot produce an effect.`);
+
+            return;
         }
 
         const duration = { rounds: ((game.combat.round + 1)), startRound: game.combat.round };
@@ -28,17 +23,18 @@ class Effect4e {
             flags: {
                 dnd4e: {
                     effectData: {
-                        durationType: duration,
+                        durationType,
                         durationTurnInit: origin.combatant.initiative,
                         startTurnInit: origin.combatant.initiative
                     }
                 },
             },
 
-            origin: `Actor.${character.actor.id}`
+            origin: `Actor.${origin.actor.id}`
         }
     }
 }
+
 
 class EffectLibrary {
     static DIVINE_SANCTION = {
