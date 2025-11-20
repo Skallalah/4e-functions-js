@@ -124,7 +124,7 @@ class Character {
     }
 
     /**
-     * 
+     *
      * @param {boolean} owned If the script is triggered by the current token owner
      * @returns The Actor system data
      */
@@ -134,5 +134,86 @@ class Character {
         } else {
             return Helper4e.getSystem(this._actor.getSystem()?.name)
         }
+    }
+
+    // Ability Scores
+
+    /**
+     * Get an ability score object
+     *
+     * @param {'str' | 'con' | 'dex' | 'int' | 'wis' | 'cha'} ability The ability score name
+     * @returns {Object | undefined} The ability object with value, mod, etc.
+     */
+    getAbility(ability) {
+        return this.getSystem()?.abilities?.[ability];
+    }
+
+    /**
+     * Get an ability modifier
+     *
+     * @param {'str' | 'con' | 'dex' | 'int' | 'wis' | 'cha'} ability The ability score name
+     * @returns {number} The ability modifier (defaults to 0 if not found)
+     */
+    getAbilityMod(ability) {
+        return this.getSystem()?.abilities?.[ability]?.mod ?? 0;
+    }
+
+    /**
+     * Get all ability modifiers as an object
+     *
+     * @returns {Object} Object with all ability modifiers {str, con, dex, int, wis, cha}
+     */
+    getAbilityMods() {
+        const abilities = this.getSystem()?.abilities ?? {};
+        return {
+            str: abilities.str?.mod ?? 0,
+            con: abilities.con?.mod ?? 0,
+            dex: abilities.dex?.mod ?? 0,
+            int: abilities.int?.mod ?? 0,
+            wis: abilities.wis?.mod ?? 0,
+            cha: abilities.cha?.mod ?? 0
+        };
+    }
+
+    // Healing Surges
+
+    /**
+     * Get healing surge data
+     *
+     * @typedef {Object} SurgeData
+     * @property {number} value - Current surges remaining
+     * @property {number} max - Maximum surges
+     * @property {number} surgeValue - HP recovered per surge
+     *
+     * @returns {SurgeData}
+     */
+    getSurges() {
+        const details = this.getSystem()?.details;
+        return {
+            value: details?.surges?.value ?? 0,
+            max: details?.surges?.max ?? 0,
+            surgeValue: details?.surgeValue ?? 0
+        };
+    }
+
+    /**
+     * Check if character has enough healing surges
+     *
+     * @param {number} count Number of surges required (default: 1)
+     * @returns {boolean} True if character has enough surges
+     */
+    hasSurges(count = 1) {
+        return this.getSurges().value >= count;
+    }
+
+    /**
+     * Consume healing surges
+     *
+     * @param {number} count Number of surges to consume
+     * @returns {Promise<void>}
+     */
+    async consumeSurges(count) {
+        const current = this.getSurges().value;
+        return this._actor.update({ 'system.details.surges.value': current - count });
     }
 }

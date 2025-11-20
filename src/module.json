@@ -13,7 +13,10 @@
     "scripts/character.js",
     "scripts/effects.js",
     "scripts/target.js",
-    "scripts/user.js"
+    "scripts/user.js",
+    "scripts/attack.js",
+    "scripts/chat.js",
+    "scripts/vfx.js"
   ],
   "compatibility": {
     "minimum": "11",
