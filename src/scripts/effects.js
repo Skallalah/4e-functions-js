@@ -42,4 +42,16 @@ class EffectLibrary {
         description: `<p>A creature subject to a paladin's divine sanction is <strong>marked</strong> by the paladin for the duration of the divine sanction, or until <strong>marked</strong> by a different person. The first time each round a creature <strong>marked</strong> by a paladin's divine sanction makes an attack that doesn't include the paladin as a target, the marked creature takes [[@tier * 3 + @chaMod]] radiant damage.</p>`,
         icon: 'icons/magic/light/orb-container-orange.webp'
     }
+
+    static STUNNED = {
+        name: 'Stunned',
+        description: `<p><strong>Stunned</strong>: You can't take actions. You grant combat advantage. You can't flank.</p>`,
+        icon: 'icons/conditions/daze-unconscious.svg'
+    }
+
+    static DAZED = {
+        name: 'Dazed',
+        description: `<p><strong>Dazed</strong>: You can take only a standard action, a minor action, or a move action on your turn (you can't take all three). You grant combat advantage.</p>`,
+        icon: 'icons/conditions/daze.svg'
+    }
 }

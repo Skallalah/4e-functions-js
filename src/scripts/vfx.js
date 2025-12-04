@@ -65,6 +65,13 @@ class VFX4e {
             teleport: { color: 'blue', beam: 'jb2a.chain_lightning.secondary.blue' },
             impact: 'jb2a.magic_signs.rune.abjuration.intro.blue',
             beam: 'jb2a.eldritch_blast.blue'
+        },
+        THUNDER: {
+            healing: 'modules/JB2A_DnD5e/Library/1st_Level/Cure_Wounds/CureWounds_01_Blue_400x400.webm',
+            aura: 'modules/JB2A_DnD5e/Library/Generic/Particles/ParticlesSwirl02_01_Regular_Blue_400x400.webm',
+            teleport: { color: 'blue', beam: 'jb2a.chain_lightning.secondary.blue' },
+            impact: 'jb2a.impact.004.blue',
+            beam: 'jb2a.chain_lightning.secondary.blue'
         }
     };
 
