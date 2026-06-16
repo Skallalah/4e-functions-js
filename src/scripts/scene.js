@@ -18,10 +18,10 @@ class Scene4e {
     }
 
     static isAtSameLocation(token, x, y) {
-        const tokenTrueAxis = canvas.grid.getCenter(token.x, token.y);
-        const targetTrueAxis = canvas.grid.getCenter(x, y);
+        const tokenTrueAxis = canvas.grid.getCenterPoint({ x: token.x, y: token.y });
+        const targetTrueAxis = canvas.grid.getCenterPoint({ x, y });
 
-        return (tokenTrueAxis[0] == targetTrueAxis[0]) && (tokenTrueAxis[1] == targetTrueAxis[1]);
+        return (tokenTrueAxis.x == targetTrueAxis.x) && (tokenTrueAxis.y == targetTrueAxis.y);
     }
 
     static getTokenAtLocation(x, y) {
@@ -39,20 +39,23 @@ class Scene4e {
         const targetTrueAxis = Scene4e.getTrueAxis(target);
 
         return (
-            Math.floor(canvas.grid.measureDistance(originTrueAxis, targetTrueAxis)) <= radius &&
+            Math.floor(canvas.grid.measurePath([originTrueAxis, targetTrueAxis]).distance) <= radius &&
             (origin.x != target.x || origin.y != target.y)
         );
     }
 
     static getTrueAxis(coordinates) {
-        const center = canvas.grid.getCenter(coordinates.x, coordinates.y);
+        const center = canvas.grid.getCenterPoint({ x: coordinates.x, y: coordinates.y });
 
-        return { x: center[0], y: center[1] }
+        return { x: center.x, y: center.y }
     }
 
     static isAdjacent(token, target) {
         return (
-            canvas.grid.measureDistance(token, target) <= 1.5 &&
+            canvas.grid.measurePath([
+                { x: token.x, y: token.y },
+                { x: target.x, y: target.y }
+            ]).distance <= 1.5 &&
             target.name !== token.name
         );
     }

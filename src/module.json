@@ -2,10 +2,8 @@
   "id": "4e-functions-js",
   "title": "Skallalah 4e Functions",
   "description": "Package of functions used in 4e system, for application of effect, damage, and automatisation.",
-  "version": "0.1.3",
+  "version": "0.4.0",
   "packs": [],
-  "system": [],
-  "dependencies": [],
   "scripts": [
     "scripts/actor.js",
     "scripts/helper.js",
@@ -19,9 +17,9 @@
     "scripts/vfx.js"
   ],
   "compatibility": {
-    "minimum": "11",
-    "verified": "12",
-    "maximum": "12"
+    "minimum": "12",
+    "verified": "13",
+    "maximum": "13"
   },
   "languages": [
     {
