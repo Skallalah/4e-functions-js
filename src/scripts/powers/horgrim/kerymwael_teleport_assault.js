@@ -20,7 +20,7 @@ async function main(item) {
 
     new Sequence()
         .effect()
-        .from(horgrim.token)
+        .copySprite(horgrim.token)
         .fadeIn(50)
         .duration(550)
         .fadeOut(250)

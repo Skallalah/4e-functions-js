@@ -127,7 +127,7 @@ class VFX4e {
 
         const sequence = new Sequence()
             .effect()
-                .from(token)
+                .copySprite(token)
                 .fadeIn(config.fadeIn)
                 .duration(config.duration)
                 .fadeOut(config.fadeOut)

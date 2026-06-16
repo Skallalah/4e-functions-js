@@ -6,7 +6,7 @@ if (!target) return;
 
 new Sequence()
     .effect()
-        .from(talaerin.token)
+        .copySprite(talaerin.token)
         .fadeIn(50)
         .duration(550)
         .fadeOut(250)
