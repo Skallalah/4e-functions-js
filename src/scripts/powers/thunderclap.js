@@ -48,7 +48,7 @@ async function main(ref) {
     for (const result of attackResults) {
         const target = result.target;
 
-        if (result.hit) {
+        if (Attack4e.isHit(result)) {
             hitTargets.push(target);
 
             // Roll full damage: 4d6 + 12

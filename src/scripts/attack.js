@@ -7,14 +7,36 @@
  * - Roll and apply damage
  * - Support multi-target and chained attacks
  */
+/**
+ * Possible outcomes of an attack roll against a single target.
+ * Values match the dnd4e system's `hitstate`, so raw string comparison also works.
+ *
+ * @readonly
+ * @enum {string}
+ */
+const AttackState = Object.freeze({
+    /** Attack hit the target's defense */
+    HIT: 'hit',
+    /** Critical hit (natural 20 / above crit range) — also counts as a hit */
+    CRITICAL: 'critical',
+    /** Attack missed the target's defense */
+    MISS: 'miss',
+    /** Fumble (natural 1) — also counts as a miss */
+    FUMBLE: 'fumble',
+    /** Target is immune to the attack — counts as a miss */
+    IMMUNE: 'immune',
+    /** Hit could not be determined (no targets, or automationCombat disabled) */
+    UNKNOWN: 'unknown'
+});
+
 class Attack4e {
     /**
      * @typedef {Object} AttackResult
-     * @property {boolean} hit - Whether the attack hit
-     * @property {Roll} roll - The attack roll object
      * @property {Character} target - The target of the attack
-     * @property {number} total - Total of the attack roll
-     * @property {number} defense - Target's defense value
+     * @property {AttackState} state - Outcome of the attack against this target (see AttackState)
+     * @property {number} total - Total of the attack roll for THIS target
+     * @property {'ac'|'fort'|'ref'|'will'} defense - Defense targeted
+     * @property {Roll} roll - This target's sub-roll (roll.rollArray[i]), or the full roll as fallback
      */
 
     /**
@@ -34,7 +56,7 @@ class Attack4e {
      * @param {Object} [options={}] Additional options
      * @param {boolean} [options.fastForward=false] Skip attack dialog
      * @param {string} [options.rollMode] Roll mode (roll, gmroll, blindroll, selfroll)
-     * @returns {Promise<AttackResult[]>} Array of attack results for each target
+     * @returns {Promise<AttackResult[]>} Array of attack results for each target (hits AND misses)
      */
     static async rollAttack(item, targets, options = {}) {
         const { fastForward = false, rollMode } = options;
@@ -47,42 +69,144 @@ class Attack4e {
             return [];
         }
 
-        const results = [];
-
-        // Set user targets for Foundry's attack system
+        // Set user targets so Foundry's attack system computes per-target hit/miss
         User4e.updateTargets(targetArray);
 
-        // Roll attack using item's system
-        const attackRoll = await item.rollAttack({
-            fastForward,
-            rollMode
-        });
+        // Roll attack using the item's native system.
+        // This posts the chat card with per-target hit prediction and returns the roll.
+        const roll = await item.rollAttack({ fastForward, rollMode });
 
-        if (!attackRoll) {
+        if (!roll) {
             console.warn('Attack roll failed or was cancelled');
             return [];
         }
 
-        // Parse results for each target
-        // Note: FoundryVTT 4e system may handle multiple targets differently
-        // This is a basic implementation that may need adjustment
-        for (const target of targetArray) {
-            // TODO: Properly extract hit/miss for each target from the roll
-            // For now, we'll need to check the roll result against target defense
+        const multirollData = Array.isArray(roll.multirollData) ? roll.multirollData : null;
 
-            const defenseValue = this._getTargetDefense(target, item);
-            const hit = attackRoll.total >= defenseValue;
+        // Fallback: no per-target data (no targets selected, or "automationCombat" disabled).
+        // Keep all available data, but mark the hit as indeterminate.
+        if (!multirollData || multirollData.length === 0) {
+            console.warn(
+                'Attack4e.rollAttack: no multirollData available ' +
+                '(likely no targets selected or the "automationCombat" client setting is disabled). ' +
+                'Returning indeterminate hit results.'
+            );
 
-            results.push({
-                hit,
-                roll: attackRoll,
+            const defense = item.system?.attack?.def;
+
+            return targetArray.map(target => ({
                 target,
-                total: attackRoll.total,
-                defense: defenseValue
-            });
+                state: AttackState.UNKNOWN,
+                total: roll.total,
+                defense,
+                roll
+            }));
         }
 
-        return results;
+        // The system already computed hit/miss/crit/fumble/immunity per target.
+        // Read multirollData and map each entry back to its input Character.
+        return multirollData.map((entry, index) => ({
+            target: this._matchTarget(targetArray, entry.targetID, index),
+            state: this._toState(entry.hitstate),
+            total: entry.total,
+            defense: entry.def,
+            roll: roll.rollArray?.[index] ?? roll
+        }));
+    }
+
+    /**
+     * Normalize the system's raw hitstate string into an AttackState enum value.
+     *
+     * @private
+     * @param {string} hitstate Raw hitstate from multirollData
+     * @returns {AttackState}
+     */
+    static _toState(hitstate) {
+        return Object.values(AttackState).includes(hitstate) ? hitstate : AttackState.UNKNOWN;
+    }
+
+    /**
+     * Whether an attack result is a hit (includes critical hits).
+     *
+     * @param {AttackResult} result
+     * @returns {boolean}
+     */
+    static isHit(result) {
+        return result?.state === AttackState.HIT || result?.state === AttackState.CRITICAL;
+    }
+
+    /**
+     * Whether an attack result is a miss (includes fumbles and immune targets).
+     *
+     * @param {AttackResult} result
+     * @returns {boolean}
+     */
+    static isMiss(result) {
+        return result?.state === AttackState.MISS
+            || result?.state === AttackState.FUMBLE
+            || result?.state === AttackState.IMMUNE;
+    }
+
+    /**
+     * Whether the target was immune to the attack.
+     *
+     * @param {AttackResult} result
+     * @returns {boolean}
+     */
+    static isImmune(result) {
+        return result?.state === AttackState.IMMUNE;
+    }
+
+    /**
+     * Whether the attack roll was a fumble.
+     *
+     * @param {AttackResult} result
+     * @returns {boolean}
+     */
+    static isFumble(result) {
+        return result?.state === AttackState.FUMBLE;
+    }
+
+    /**
+     * Filter attack results to only the targets that were hit.
+     *
+     * @param {AttackResult[]} results
+     * @returns {AttackResult[]}
+     */
+    static hits(results) {
+        return results.filter(r => this.isHit(r));
+    }
+
+    /**
+     * Filter attack results to only the targets that were missed.
+     *
+     * @param {AttackResult[]} results
+     * @returns {AttackResult[]}
+     */
+    static misses(results) {
+        return results.filter(r => this.isMiss(r));
+    }
+
+    /**
+     * Map a multiroll entry's targetID (token id) back to the input Character.
+     * Falls back to positional index when no token id matches.
+     *
+     * @private
+     * @param {Character[]} targets Input characters
+     * @param {string} targetID Token id from multirollData
+     * @param {number} index Fallback positional index
+     * @returns {Character}
+     */
+    static _matchTarget(targets, targetID, index) {
+        const matched = targets.find(character => {
+            try {
+                return character.tokens?.some(token => token.id === targetID);
+            } catch {
+                return false;
+            }
+        });
+
+        return matched ?? targets[index];
     }
 
     /**
@@ -167,7 +291,7 @@ class Attack4e {
 
         // Process attack results
         for (const result of attackResults) {
-            if (result.hit) {
+            if (this.isHit(result)) {
                 hitTargets.push(result.target);
 
                 if (onHit) {
@@ -195,23 +319,6 @@ class Attack4e {
     }
 
     /**
-     * Helper to get target's defense value for the attack
-     *
-     * @private
-     * @param {Character} target Target character
-     * @param {Item} item Attack item
-     * @returns {number} Defense value
-     */
-    static _getTargetDefense(target, item) {
-        // TODO: Extract defense type from item (AC, Fortitude, Reflex, Will)
-        // For now, return a placeholder
-        const defenseType = item.system?.attack?.def || 'ac';
-        const defenses = target.getSystem()?.defences || {};
-
-        return defenses[defenseType]?.value || 10;
-    }
-
-    /**
      * Helper to get damage type from item
      *
      * @private
@@ -230,16 +337,14 @@ class Attack4e {
     }
 
     /**
-     * Check if an attack roll was a critical hit
+     * Check if an attack result was a critical hit.
+     * The crit state is computed by the system and carried on the AttackResult.
      *
-     * @param {Roll} roll The attack roll
-     * @param {number} [critThreshold=20] Crit threshold (usually 20, or lower for improved crit)
-     * @returns {boolean} Whether the roll was a critical hit
+     * @param {AttackResult} result An attack result from rollAttack
+     * @returns {boolean} Whether the attack was a critical hit
      */
-    static isCritical(roll, critThreshold = 20) {
-        // Check if the d20 roll was >= threshold
-        const d20Result = roll.terms[0]?.results?.[0]?.result;
-        return d20Result >= critThreshold;
+    static isCritical(result) {
+        return result?.state === AttackState.CRITICAL;
     }
 
     /**

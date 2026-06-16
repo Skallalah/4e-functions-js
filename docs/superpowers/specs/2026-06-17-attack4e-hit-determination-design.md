@@ -53,10 +53,31 @@ Caveats :
 | Périmètre | Hit uniquement ; `rollDamage` / `attackAndDamage` inchangés |
 | Source de vérité du hit | `roll.multirollData` (lecture après le jet système) |
 | Donnée retournée | **Toute** la donnée : hits ET miss ET crit/fumble/immunité, jamais filtrée |
-| Fallback si `multirollData` absent | Avertir (`console.warn`) + `hit: null`, `hitstate: 'unknown'`, mais `total`/`defense`/`roll`/`target` remplis |
+| Fallback si `multirollData` absent | Avertir (`console.warn`) + `state: AttackState.UNKNOWN`, mais `total`/`defense`/`roll`/`target` remplis |
 | Résistances | hors sujet (c'est la partie dégâts, en pause) |
 
 ## Conception
+
+### Enum `AttackState`
+
+Plutôt qu'un booléen par état, l'issue de l'attaque est portée par **un seul état** (enum). Le `critstate` du système est redondant : `hitstate` encode déjà `critical`/`fumble`/`immune` (le système met `hitstate = 'critical'` pour un crit, etc.).
+
+```javascript
+/**
+ * @readonly
+ * @enum {string}
+ */
+const AttackState = Object.freeze({
+    HIT: 'hit',           // touche la défense
+    CRITICAL: 'critical', // crit — compte aussi comme un hit
+    MISS: 'miss',         // rate la défense
+    FUMBLE: 'fumble',     // échec critique — compte aussi comme un miss
+    IMMUNE: 'immune',     // cible immunisée — compte comme un miss
+    UNKNOWN: 'unknown'    // indéterminé (pas de cible, ou automationCombat off)
+});
+```
+
+Les valeurs correspondent au `hitstate` du système, donc une comparaison de chaîne brute fonctionne aussi.
 
 ### `AttackResult` (forme complète)
 
@@ -64,24 +85,14 @@ Caveats :
 /**
  * @typedef {Object} AttackResult
  * @property {Character} target       La cible
- * @property {boolean|null} hit       true si hitstate ∈ {hit, critical} ; false si {miss, fumble, immune} ; null si indéterminé
- * @property {boolean|null} miss      Inverse de hit (null si indéterminé)
- * @property {boolean} critical       critstate === 'critical'
- * @property {boolean} fumble         critstate === 'fumble'
- * @property {boolean} immune         hitstate === 'immune'
- * @property {'hit'|'critical'|'miss'|'fumble'|'immune'|'unknown'} hitstate
+ * @property {AttackState} state      Issue de l'attaque contre cette cible
  * @property {number} total           Total du jet d'attaque pour CETTE cible
  * @property {'ac'|'fort'|'ref'|'will'} defense  Défense visée
  * @property {Roll} roll              Sous-jet de cette cible (roll.rollArray[i]) ou le jet complet en fallback
  */
 ```
 
-Classification depuis une entrée `multirollData` :
-- `hit` = `hitstate ∈ {'hit','critical'}`
-- `miss` = `hitstate ∈ {'miss','fumble','immune'}`
-- `critical` = `critstate === 'critical'`
-- `fumble` = `critstate === 'fumble'`
-- `immune` = `hitstate === 'immune'`
+`state` = normalisation de `entry.hitstate` via `_toState` (toute valeur hors enum → `UNKNOWN`).
 
 ### `rollAttack(item, targets, options)`
 
@@ -94,39 +105,32 @@ Classification depuis une entrée `multirollData` :
    - Si une entrée ne mappe sur aucune `Character` d'entrée, retomber sur l'ordre d'index comme secours.
 5. Sinon (pas de `multirollData`) — **fallback indéterminé** :
    - `console.warn` explicite (probable absence de cibles ou `automationCombat` désactivé).
-   - Retourner un `AttackResult` par cible d'entrée avec `hit: null`, `miss: null`, `hitstate: 'unknown'`, `critical/fumble/immune: false`, `total` = `roll.total` (meilleure approximation disponible), `defense` = `item.system?.attack?.def`, `roll`.
+   - Retourner un `AttackResult` par cible d'entrée avec `state: AttackState.UNKNOWN`, `total` = `roll.total` (meilleure approximation disponible), `defense` = `item.system?.attack?.def`, `roll`.
 6. Retourner le tableau (hits **et** miss confondus, ordre des cibles).
 
-### Helpers de lecture
+### Prédicats et helpers de lecture
+
+Les états dérivés deviennent des prédicats au lieu de champs booléens stockés :
 
 ```javascript
-/** @returns {AttackResult[]} uniquement les cibles touchées (hit === true) */
-static hits(results) { return results.filter(r => r.hit === true); }
+static isHit(result)     { return result?.state === AttackState.HIT || result?.state === AttackState.CRITICAL; }
+static isMiss(result)    { return result?.state === AttackState.MISS || result?.state === AttackState.FUMBLE || result?.state === AttackState.IMMUNE; }
+static isCritical(result){ return result?.state === AttackState.CRITICAL; }
+static isFumble(result)  { return result?.state === AttackState.FUMBLE; }
+static isImmune(result)  { return result?.state === AttackState.IMMUNE; }
 
-/** @returns {AttackResult[]} uniquement les cibles manquées (miss === true) */
-static misses(results) { return results.filter(r => r.miss === true); }
+static hits(results)     { return results.filter(r => this.isHit(r)); }
+static misses(results)   { return results.filter(r => this.isMiss(r)); }
 ```
 
-La donnée brute reste accessible : ces helpers ne sont que du sucre, le tableau complet est toujours retourné par `rollAttack`.
+La donnée brute reste accessible : le tableau complet (toutes cibles, tous états) est toujours retourné par `rollAttack`. Pour `UNKNOWN`, `isHit` et `isMiss` renvoient tous deux `false`.
 
-### `isCritical`
-
-Ne plus fouiller `roll.terms`. La méthode lit désormais le résultat :
-
-```javascript
-/**
- * @param {AttackResult} result
- * @returns {boolean}
- */
-static isCritical(result) { return result?.critical === true; }
-```
-
-(`result.critical` reste la voie recommandée directe.)
-
-### Suppressions / inchangés
+### Suppressions / inchangés / migrations
 
 - **Supprimer** `_getTargetDefense` (devenu inutile et faux).
-- **Inchangés** : `rollDamage`, `attackAndDamage`, `_getDamageType`, `promptHit`. `attackAndDamage` continue de fonctionner car il lit `result.hit` et `result.target`, toujours présents — il bénéficie automatiquement du hit correct.
+- **Inchangés** (logique de dégâts) : `rollDamage`, `_getDamageType`, `promptHit`.
+- **`attackAndDamage`** : seul son test de hit passe de `result.hit` à `this.isHit(result)` ; le reste (jet de dégâts) est inchangé.
+- **Consommateurs migrés** : les pouvoirs qui lisaient `result.hit` passent à `Attack4e.isHit(result)` — `thunderclap.js`, `lightning_fury/furious_bolts.js` (primaire + secondaire), `rogue/feinting_flurry.js`.
 
 ## Hors périmètre
 
@@ -135,4 +139,4 @@ static isCritical(result) { return result?.critical === true; }
 
 ## Validation
 
-- Pas de tests automatisés dans ce projet (module Foundry runtime). Validation manuelle en jeu : attaque mono-cible (hit / miss / crit), multi-cibles mixte (certaines touchées, d'autres non), cible immunisée, et cas `automationCombat` désactivé (doit retourner `hitstate: 'unknown'` sans planter).
+- Pas de tests automatisés dans ce projet (module Foundry runtime). Validation manuelle en jeu : attaque mono-cible (hit / miss / crit), multi-cibles mixte (certaines touchées, d'autres non), cible immunisée, et cas `automationCombat` désactivé (doit retourner `state: AttackState.UNKNOWN` sans planter).

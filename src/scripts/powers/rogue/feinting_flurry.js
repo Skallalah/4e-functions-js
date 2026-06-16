@@ -39,7 +39,7 @@ async function main(ref) {
             fastForward: false
         });
 
-        const hit = attackResults[0]?.hit || false;
+        const hit = Attack4e.isHit(attackResults[0]);
 
         if (hit) {
             // Roll damage: 5[W] + Dex

@@ -50,7 +50,7 @@ async function main(ref) {
         fastForward: false
     });
 
-    const primaryHit = primaryAttackResults[0]?.hit || false;
+    const primaryHit = Attack4e.isHit(primaryAttackResults[0]);
 
     if (primaryHit) {
         hitTargets.push(primaryTarget);
@@ -122,7 +122,7 @@ async function main(ref) {
             fastForward: false
         });
 
-        const secondaryHit = secondaryAttackResults[0]?.hit || false;
+        const secondaryHit = Attack4e.isHit(secondaryAttackResults[0]);
 
         if (secondaryHit) {
             hitTargets.push(secondaryTarget);
