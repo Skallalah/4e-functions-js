@@ -23,168 +23,86 @@
 async function main(ref) {
     const caster = Character.fromActor(ref.actor);
     const item = ref.item;
-
-    // Get Charisma modifier for damage
     const chaMod = caster.getAbilityMod('cha');
+    const attack = Attack4e.fromItem(item);
 
-    // Track all hits for the chain effect
+    /** @type {Set<string>} */
+    const attacked = new Set();
+    /** @type {Character[]} */
     const hitTargets = [];
-    const attackedTargets = new Set();
 
-    // Step 1: Select and attack primary target
-    const primaryTargetSelection = await Target.fromCharacter(caster)
-        .range(20)
-        .type('enemies')
-        .selectCharacters(item.img);
+    // --- Primary ---
+    const primarySel = await Target.fromCharacter(caster)
+        .range(20).type('enemies')
+        .selectCharacters({ count: 1, icon: item.img });
+    if (!primarySel.length) { ui.notifications.warn('No target selected.'); return; }
 
-    if (!primaryTargetSelection || primaryTargetSelection.length === 0) {
-        ui.notifications.warn('No target selected.');
-        return;
-    }
+    const primary = primarySel[0];
+    attacked.add(primary.id);
 
-    const primaryTarget = primaryTargetSelection[0];
-    attackedTargets.add(primaryTarget.actor.id);
+    const primaryResult = await attack.rollAttack([primary], { fastForward: true });
+    await primaryResult.hit
+        .applyDamage({ fastForward: true })
+        .applyVFX({ type: 'LIGHTNING' })
+        .run();
 
-    // Primary Attack using Attack4e abstraction
-    const primaryAttackResults = await Attack4e.rollAttack(item, primaryTarget, {
-        fastForward: false
-    });
+    if (primaryResult.hasHit()) hitTargets.push(primary);
 
-    const primaryHit = Attack4e.isHit(primaryAttackResults[0]);
+    // --- Secondary chain (2d4 + Cha lightning, breaks on miss) ---
+    let origin = primary;
+    let chaining = primaryResult.hasHit();
 
-    if (primaryHit) {
-        hitTargets.push(primaryTarget);
+    while (chaining) {
+        const candidates = Target.fromCharacter(origin)
+            .range(10).type('enemies').get()
+            .filter(t => !attacked.has(t.id));
+        if (candidates.length === 0) break;
 
-        // Roll primary damage: 2d8 + Cha
-        // Note: item.rollDamage() uses the item's configured damage
-        // For powers with varying damage, we may need to modify the item or roll manually
-        await item.rollDamage({ fastForward: true });
+        const sel = await Target.fromCharacter(origin)
+            .range(10).type('enemies')
+            .selectCharacters({ count: 1, icon: item.img });
+        if (!sel.length) break;
 
-        // Alternative: Manual damage roll if item damage is different
-        // const primaryDamageRoll = await new Roll(`2d8 + ${chaMod}`).evaluate({ async: true });
-        // await primaryDamageRoll.toMessage({
-        //     flavor: `${item.name} - Primary Damage (Lightning)`,
-        //     speaker: ChatMessage.getSpeaker({ actor: caster.actor })
-        // });
-
-        // Visual effect: Lightning strike on primary target
-        await VFX4e.impact(primaryTarget, 'LIGHTNING');
-    } else {
-        // Primary missed - no chain possible
-        await Chat4e.power(caster, 'Furious Bolts', `The lightning bolts miss ${primaryTarget.name}!`);
-        return;
-    }
-
-    // Step 2: Chain secondary attacks
-    let currentOrigin = primaryTarget;
-    let continueChain = primaryHit;
-
-    while (continueChain) {
-        // Get potential secondary targets within 10 squares of current origin
-        const potentialTargets = Target.fromCharacter(currentOrigin)
-            .range(10)
-            .type('enemies')
-            .get()
-            .filter(target => !attackedTargets.has(target.actor.id));
-
-        if (potentialTargets.length === 0) {
-            // No more valid targets
-            continueChain = false;
-            break;
-        }
-
-        // Select next target in the chain
-        const secondaryTargetSelection = await Target.fromCharacter(currentOrigin)
-            .range(10)
-            .type('enemies')
-            .selectCharacters(item.img);
-
-        if (!secondaryTargetSelection || secondaryTargetSelection.length === 0) {
-            continueChain = false;
-            break;
-        }
-
-        const secondaryTarget = secondaryTargetSelection[0];
-
-        // Check if this target was already attacked
-        if (attackedTargets.has(secondaryTarget.actor.id)) {
-            ui.notifications.warn(`${secondaryTarget.name} has already been attacked. Choose a different target.`);
+        const next = sel[0];
+        if (attacked.has(next.id)) {
+            ui.notifications.warn(`${next.name} has already been attacked. Choose another.`);
             continue;
         }
+        attacked.add(next.id);
 
-        attackedTargets.add(secondaryTarget.actor.id);
+        await VFX4e.beam(origin, next, 'LIGHTNING');
 
-        // Visual effect: Lightning chain from previous target to new target
-        await VFX4e.beam(currentOrigin, secondaryTarget, 'LIGHTNING');
+        const secondary = await attack.rollAttack([next], { fastForward: true });
 
-        // Secondary Attack using Attack4e abstraction
-        const secondaryAttackResults = await Attack4e.rollAttack(item, secondaryTarget, {
-            fastForward: false
-        });
-
-        const secondaryHit = Attack4e.isHit(secondaryAttackResults[0]);
-
-        if (secondaryHit) {
-            hitTargets.push(secondaryTarget);
-
-            // Roll secondary damage: 2d4 + Cha (different from primary!)
-            // Must roll manually since item damage is configured for 2d8
-            const secondaryDamageRoll = await new Roll(`2d4 + ${chaMod}`).evaluate({ async: true });
-            await secondaryDamageRoll.toMessage({
-                flavor: `${item.name} - Secondary Lightning Damage`,
-                speaker: ChatMessage.getSpeaker({ actor: caster.actor })
-            });
-
-            // Visual effect: Lightning impact on secondary target
-            await VFX4e.impact(secondaryTarget, 'LIGHTNING');
-
-            // Update origin for next potential chain
-            currentOrigin = secondaryTarget;
+        if (secondary.hasHit()) {
+            hitTargets.push(next);
+            await secondary.hit
+                .applyDamage({ formula: `2d4 + ${chaMod}`, type: 'lightning' })
+                .applyVFX({ type: 'LIGHTNING' })
+                .run();
+            origin = next;
         } else {
-            // Miss: chain breaks
-            continueChain = false;
-
-            // Visual effect: Lightning fizzles
-            await VFX4e.custom(
-                'jb2a.static_electricity.03.blue',
-                secondaryTarget,
-                { scale: 0.5 }
-            );
+            chaining = false;
+            await VFX4e.custom('jb2a.static_electricity.03.blue', next, { scale: 0.5 });
         }
     }
 
-    // Step 3: Apply effect buff for next turn
+    // --- Buff effect: +N to next attack ---
     const hitCount = hitTargets.length;
-
     if (hitCount > 0) {
-        const furiousBoltsEffect = Effect4e.createEffect(
-            {
-                name: 'Furious Bolts - Attack Bonus',
-                description: `<p>+${hitCount} bonus to your first attack roll on your next turn (from hitting ${hitCount} creature${hitCount > 1 ? 's' : ''} with Furious Bolts).</p>`,
-                icon: 'icons/magic/lightning/bolt-strike-blue.webp',
-                changes: [
-                    {
-                        key: 'system.attributes.attack.bonus',
-                        mode: 2, // ADD
-                        value: hitCount,
-                        priority: 20
-                    }
-                ]
-            },
-            'endOfUserTurn',
-            caster
-        );
+        const effect = Effect4e.createEffect({
+            name: 'Furious Bolts - Attack Bonus',
+            description: `<p>+${hitCount} bonus to your first attack roll on your next turn (hit ${hitCount} creature${hitCount > 1 ? 's' : ''}).</p>`,
+            icon: 'icons/magic/lightning/bolt-strike-blue.webp',
+            changes: [{ key: 'system.attributes.attack.bonus', mode: 2, value: hitCount, priority: 20 }]
+        }, 'endOfUserTurn', caster);
 
-        await caster.addEffect(furiousBoltsEffect);
+        await caster.addEffect(effect);
     }
 
-    // Chat message summarizing the chain
     const hitNames = hitTargets.map(t => t.name).join(', ');
-    await Chat4e.power(
-        caster,
-        'Furious Bolts',
-        `Lightning chains through ${hitCount} creature${hitCount > 1 ? 's' : ''}: ${hitNames}. ${caster.name} gains +${hitCount} to their next attack roll!`
-    );
+    await Chat4e.power(caster, 'Furious Bolts',
+        `Lightning chains through ${hitCount} creature${hitCount > 1 ? 's' : ''}${hitNames ? `: ${hitNames}` : ''}. ${caster.name} gains +${hitCount} to their next attack roll!`);
 }
 
 main(this);

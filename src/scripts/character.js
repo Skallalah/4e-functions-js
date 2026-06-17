@@ -1,5 +1,9 @@
 class Character {
+    /** @type {Actor} */
     _actor;
+
+    /** @type {TokenDocument|Token|null} */
+    _token = null;
 
     // Base Getter / Setter
 
@@ -11,15 +15,27 @@ class Character {
     }
 
     /**
-     * @param {Actor} actor 
+     * Stable, scene-unique identifier for this Character.
+     * `actorId.tokenId` when bound to a token (unique even for unlinked tokens
+     * sharing a prototype), else the bare `actorId`.
+     *
+     * @returns {string}
      */
-    constructor(actor) {
-        this._actor = actor;
+    get id() {
+        return this._token ? `${this._actor.id}.${this._token.id}` : this._actor.id;
     }
 
     /**
-     * 
-     * @param {Actor} actor 
+     * @param {Actor} actor
+     * @param {TokenDocument|Token|null} [token=null] Specific token this Character is bound to
+     */
+    constructor(actor, token = null) {
+        this._actor = actor;
+        this._token = token;
+    }
+
+    /**
+     * @param {Actor} actor
      * @returns {Character}
      */
     static fromActor(actor) {
@@ -27,14 +43,11 @@ class Character {
     }
 
     /**
-     * 
-     * @param {Token} token 
+     * @param {TokenDocument|Token} token
      * @returns {Character}
      */
     static fromToken(token) {
-        const actor = token.actor;
-
-        return new Character(actor);
+        return new Character(token.actor, token);
     }
 
     /**
@@ -80,18 +93,31 @@ class Character {
         return Helper4e.tempHeal(this._actor, value);
     }
 
-    async damage(value) {
-        return;
+    /**
+     * Apply a resolved Damage4e to this character (resistances honored unless
+     * the Damage4e bypasses them). Low-level primitive — mirror of `heal`.
+     *
+     * @param {Damage4e} damage A Damage4e instance with .roll() already awaited
+     * @returns {Promise<boolean|undefined>}
+     */
+    async damage(damage) {
+        return Helper4e.damage(this.id, damage.parts, damage.multiplier, damage.bypass);
     }
 
+    /**
+     * @param {Object} effect Effect data from Effect4e.createEffect
+     */
     async addEffect(effect) {
-        const tokenIdentifier = this.token.id;
+        const tokenIdentifier = this._token?.id ?? this.token.id;
 
         await Helper4e.applyEffect({ tokenIdentifier, effectData: effect });
     }
 
+    /**
+     * @param {Object} effect Effect data from Effect4e.createEffect
+     */
     async replaceEffect(effect) {
-        const tokenIdentifier = this.token.id;
+        const tokenIdentifier = this._token?.id ?? this.token.id;
 
         await Helper4e.replaceEffect({ tokenIdentifier, effectData: effect });
     }

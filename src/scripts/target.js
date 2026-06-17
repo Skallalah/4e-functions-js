@@ -28,9 +28,12 @@ class Target {
     static fromCharacter(character) {
         const origins = character.tokens.map(t => ({ x: t.x, y: t.y }));
 
-        console.log('token', character.token?.document)
+        // Prefer the bound token; fall back to the first active token.
+        // Works for both TokenDocument (.disposition) and placeable Token (.document.disposition).
+        const token = character._token ?? character.tokens[0];
+        const disposition = token?.document?.disposition ?? token?.disposition ?? null;
 
-        return new Target(origins).disposition(character.token?.document.disposition);
+        return new Target(origins).disposition(disposition);
     }
 
     /**
@@ -118,24 +121,44 @@ class Target {
     }
 
     /**
-     * @param {string} icon the path of the icon
-     * @returns {Character[] | null}
+     * Interactively select exactly `count` characters within range.
+     *
+     * @param {Object|string} [opts={}] Options object, or a bare icon path (legacy)
+     * @param {number} [opts.count=1] Exact number of characters to select
+     * @param {string} [opts.icon] Path to the targeting cursor icon
+     * @returns {Promise<Character[]>} Selected characters, or [] if cancelled (always an array)
      */
-    async selectCharacters(icon) {
-        let selection;
+    async selectCharacters({ count = 1, icon } = {}) {
+        // Tolerate the legacy bare-string call: selectCharacters(iconPath).
+        if (typeof arguments[0] === 'string') icon = arguments[0], count = 1;
 
-        while (true) {
-            selection = await this.selectTarget(icon);
+        /** @type {Map<string, Character>} */
+        const picked = new Map();
+
+        while (picked.size < count) {
+            const selection = await this.selectTarget(icon);
+
+            // Cancelled: abort the whole selection.
+            if (selection === null) return [];
 
             const characters = selection.get();
 
             if (characters.length === 0) {
                 ui.notifications.warn('Please target one valid token.');
                 continue;
-            } else {
-                return characters;
+            }
+
+            for (const character of characters) {
+                if (picked.size >= count) break;
+                if (picked.has(character.id)) {
+                    ui.notifications.warn(`${character.name} is already selected. Choose another.`);
+                    continue;
+                }
+                picked.set(character.id, character);
             }
         }
+
+        return [...picked.values()];
     }
 
     /**
@@ -163,6 +186,9 @@ class Target {
             targets = targets.filter(typeFilter)
         }
 
-        return [...new Set(targets.map(t => t.actor))].map(actor => Character.fromActor(actor));
+        // Dedupe by TOKEN (not actor): two identical monsters are two targets,
+        // each with its own resistances and a unique composite Character.id.
+        return [...new Map(targets.map(t => [t.id, t])).values()]
+            .map(token => Character.fromToken(token));
     }
 }
