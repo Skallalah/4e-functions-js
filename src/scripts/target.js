@@ -28,9 +28,12 @@ class Target {
     static fromCharacter(character) {
         const origins = character.tokens.map(t => ({ x: t.x, y: t.y }));
 
-        console.log('token', character.token?.document)
+        // Prefer the bound token; fall back to the first active token.
+        // Works for both TokenDocument (.disposition) and placeable Token (.document.disposition).
+        const token = character._token ?? character.tokens[0];
+        const disposition = token?.document?.disposition ?? token?.disposition ?? null;
 
-        return new Target(origins).disposition(character.token?.document.disposition);
+        return new Target(origins).disposition(disposition);
     }
 
     /**
@@ -163,6 +166,9 @@ class Target {
             targets = targets.filter(typeFilter)
         }
 
-        return [...new Set(targets.map(t => t.actor))].map(actor => Character.fromActor(actor));
+        // Dedupe by TOKEN (not actor): two identical monsters are two targets,
+        // each with its own resistances and a unique composite Character.id.
+        return [...new Map(targets.map(t => [t.id, t])).values()]
+            .map(token => Character.fromToken(token));
     }
 }
