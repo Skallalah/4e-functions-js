@@ -93,8 +93,15 @@ class Character {
         return Helper4e.tempHeal(this._actor, value);
     }
 
-    async damage(value) {
-        return;
+    /**
+     * Apply a resolved Damage4e to this character (resistances honored unless
+     * the Damage4e bypasses them). Low-level primitive — mirror of `heal`.
+     *
+     * @param {Damage4e} damage A Damage4e instance with .roll() already awaited
+     * @returns {Promise<boolean|undefined>}
+     */
+    async damage(damage) {
+        return Helper4e.damage(this.id, damage.parts, damage.multiplier, damage.bypass);
     }
 
     /**
