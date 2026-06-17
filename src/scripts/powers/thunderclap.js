@@ -37,66 +37,31 @@ async function main(ref) {
     }
 
     // Step 3: Perform attacks against all targets
-    const attackResults = await Attack4e.rollAttack(item, targets, {
-        fastForward: false
-    });
+    const result = await Attack4e.fromItem(item).rollAttack(targets, { fastForward: false });
 
-    const hitTargets = [];
-    const missTargets = [];
+    // Step 4: One thunder roll for the whole burst; misses take half of the SAME roll.
+    const dmg = await Damage4e.fromFormula('4d6 + 12', 'thunder').by(caster).roll();
 
-    // Step 4: Process results and apply effects
-    for (const result of attackResults) {
-        const target = result.target;
+    // Hit: full damage, stunned, thunder impact.
+    await result.hit
+        .applyDamage({ damage: dmg })
+        .applyEffect({ data: EffectLibrary.STUNNED, durationType: 'endOfUserTurn' })
+        .applyVFX({ type: 'THUNDER' })
+        .run();
 
-        if (Attack4e.isHit(result)) {
-            hitTargets.push(target);
+    // Miss: half of the same roll, dazed.
+    await result.miss
+        .applyDamage({ damage: dmg, multiplier: 0.5 })
+        .applyEffect({ data: EffectLibrary.DAZED, durationType: 'endOfUserTurn' })
+        .run();
 
-            // Roll full damage: 4d6 + 12
-            const damageRoll = await new Roll('4d6 + 12').evaluate({ async: true });
-            await damageRoll.toMessage({
-                flavor: `${item.name} - Thunder Damage (Hit)`,
-                speaker: ChatMessage.getSpeaker({ actor: caster.actor })
-            });
-
-            // Apply stunned effect
-            const stunnedEffect = Effect4e.createEffect(
-                EffectLibrary.STUNNED,
-                'endOfUserTurn',
-                caster
-            );
-
-            await target.replaceEffect(stunnedEffect);
-
-            // Visual effect: Thunder impact
-            await VFX4e.impact(target, 'THUNDER');
-
-        } else {
-            missTargets.push(target);
-
-            // Roll half damage: 2d6 + 6
-            const damageRoll = await new Roll('2d6 + 6').evaluate({ async: true });
-            await damageRoll.toMessage({
-                flavor: `${item.name} - Thunder Damage (Miss)`,
-                speaker: ChatMessage.getSpeaker({ actor: caster.actor })
-            });
-
-            // Apply dazed effect
-            const dazedEffect = Effect4e.createEffect(
-                EffectLibrary.DAZED,
-                'endOfUserTurn',
-                caster
-            );
-
-            await target.replaceEffect(dazedEffect);
-
-            // Visual effect: Lesser thunder impact
-            await VFX4e.custom(
-                'jb2a.impact.groundcrack.01.blue',
-                target,
-                { scale: 0.7 }
-            );
-        }
+    // Lesser impact VFX on each missed target (bespoke, stays manual).
+    for (const o of result.miss) {
+        await VFX4e.custom('jb2a.impact.groundcrack.01.blue', o.target, { scale: 0.7 });
     }
+
+    const hitTargets = result.hit.map(o => o.target);
+    const missTargets = result.miss.map(o => o.target);
 
     // Step 5: Area effect visual
     await VFX4e.custom(
