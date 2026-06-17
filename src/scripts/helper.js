@@ -14,8 +14,46 @@ class Helper4e {
         return await game.macros.getName('ApplyTempHp').execute({ actorIdentifier: actor.name, value });
     }
 
-    static async damage() {
-        // todo
+    /**
+     * Apply damage to an actor identified by its Character.id, via the
+     * permission-elevated world macro.
+     *
+     * @param {string} characterId Character.id (`actorId` or `actorId.tokenId`)
+     * @param {Array<[number, string]>} parts Damage chunks: [value, type]
+     * @param {number} multiplier Application multiplier (1 full, 0.5 half, 2 double)
+     * @param {boolean} bypass When true, ignore resistances (raw applyDamage)
+     * @returns {Promise<boolean|undefined>}
+     */
+    static async damage(characterId, parts, multiplier, bypass) {
+        return await game.macros.getName('ApplyDamage')
+            .execute({ characterId, parts, multiplier, bypass });
+    }
+
+    /**
+     * World-macro body for ApplyDamage. Runs with elevated permissions.
+     *
+     * @param {Object} scope
+     * @param {string} scope.characterId
+     * @param {Array<[number, string]>} scope.parts
+     * @param {number} [scope.multiplier=1]
+     * @param {boolean} [scope.bypass=false]
+     * @returns {Promise<boolean|undefined>}
+     */
+    static async macroApplyDamage(scope) {
+        const { characterId, parts, multiplier = 1, bypass = false } = scope;
+
+        const actor = Actor4e.findByCharacterId(characterId);
+
+        if (!actor) return undefined;
+
+        if (bypass) {
+            const total = parts.reduce((sum, [value]) => sum + value, 0);
+            await actor.applyDamage(total, multiplier);
+        } else {
+            await actor.calcDamage(parts, multiplier);
+        }
+
+        return true;
     }
 
     static async macroApplyHeal(scope) {
