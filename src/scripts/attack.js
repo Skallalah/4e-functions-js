@@ -29,11 +29,65 @@ const AttackState = Object.freeze({
     UNKNOWN: 'unknown'
 });
 
+/**
+ * Array-like result of an attack: an iterable of AttackOutcome, carrying the
+ * attack context (item, caster) and a lazy operation queue executed by run().
+ *
+ * Extends Array so `result[0]`, `result.length`, `.filter`, and
+ * `Attack4e.isHit(result[0])` keep working for existing powers.
+ */
+class AttackResult extends Array {
+    /** @type {Item|null} */
+    _item = null;
+    /** @type {Character|null} */
+    _caster = null;
+    /** @type {Array<{kind: string, opts: Object}>} */
+    _queue = [];
+    /** @type {boolean} */
+    _consumed = false;
+
+    /**
+     * Build an AttackResult from outcomes plus attack context.
+     *
+     * @param {AttackOutcome[]} outcomes
+     * @param {Item} item
+     * @param {Character} caster
+     * @returns {AttackResult}
+     */
+    static of(outcomes, item, caster) {
+        const result = AttackResult.from(outcomes);
+        result._item = item;
+        result._caster = caster;
+        return result;
+    }
+
+    /**
+     * Outcomes that hit (HIT or CRITICAL), as a fresh AttackResult (empty queue).
+     * @returns {AttackResult}
+     */
+    get hit() {
+        return AttackResult.of(this.filter(o => Attack4e.isHit(o)), this._item, this._caster);
+    }
+
+    /**
+     * Outcomes that missed (MISS, FUMBLE, IMMUNE), as a fresh AttackResult (empty queue).
+     * @returns {AttackResult}
+     */
+    get miss() {
+        return AttackResult.of(this.filter(o => Attack4e.isMiss(o)), this._item, this._caster);
+    }
+
+    /** @returns {boolean} */
+    hasHit() { return this.some(o => Attack4e.isHit(o)); }
+    /** @returns {boolean} */
+    hasMiss() { return this.some(o => Attack4e.isMiss(o)); }
+}
+
 class Attack4e {
     /**
-     * @typedef {Object} AttackResult
-     * @property {Character} target - The target of the attack
-     * @property {AttackState} state - Outcome of the attack against this target (see AttackState)
+     * @typedef {Object} AttackOutcome
+     * @property {Character} target - The target, as a Character (token-backed → composite id)
+     * @property {AttackState} state - Outcome against this target (see AttackState)
      * @property {number} total - Total of the attack roll for THIS target
      * @property {'ac'|'fort'|'ref'|'will'} defense - Defense targeted
      * @property {Roll} roll - This target's sub-roll (roll.rollArray[i]), or the full roll as fallback
@@ -56,7 +110,7 @@ class Attack4e {
      * @param {Object} [options={}] Additional options
      * @param {boolean} [options.fastForward=false] Skip attack dialog
      * @param {string} [options.rollMode] Roll mode (roll, gmroll, blindroll, selfroll)
-     * @returns {Promise<AttackResult[]>} Array of attack results for each target (hits AND misses)
+     * @returns {Promise<AttackResult>} Array-like result of AttackOutcome (hits AND misses)
      */
     static async rollAttack(item, targets, options = {}) {
         const { fastForward = false, rollMode } = options;
@@ -66,7 +120,7 @@ class Attack4e {
 
         if (targetArray.length === 0) {
             ui.notifications.warn('No targets specified for attack.');
-            return [];
+            return AttackResult.of([], item, null);
         }
 
         // Set user targets so Foundry's attack system computes per-target hit/miss
@@ -78,7 +132,7 @@ class Attack4e {
 
         if (!roll) {
             console.warn('Attack roll failed or was cancelled');
-            return [];
+            return AttackResult.of([], item, null);
         }
 
         const multirollData = Array.isArray(roll.multirollData) ? roll.multirollData : null;
@@ -94,24 +148,28 @@ class Attack4e {
 
             const defense = item.system?.attack?.def;
 
-            return targetArray.map(target => ({
+            const outcomes = targetArray.map(target => ({
                 target,
                 state: AttackState.UNKNOWN,
                 total: roll.total,
                 defense,
                 roll
             }));
+
+            return AttackResult.of(outcomes, item, null);
         }
 
         // The system already computed hit/miss/crit/fumble/immunity per target.
         // Read multirollData and map each entry back to its input Character.
-        return multirollData.map((entry, index) => ({
+        const outcomes = multirollData.map((entry, index) => ({
             target: this._matchTarget(targetArray, entry.targetID, index),
             state: this._toState(entry.hitstate),
             total: entry.total,
             defense: entry.def,
             roll: roll.rollArray?.[index] ?? roll
         }));
+
+        return AttackResult.of(outcomes, item, null);
     }
 
     /**
@@ -128,7 +186,7 @@ class Attack4e {
     /**
      * Whether an attack result is a hit (includes critical hits).
      *
-     * @param {AttackResult} result
+     * @param {AttackOutcome} result
      * @returns {boolean}
      */
     static isHit(result) {
@@ -138,7 +196,7 @@ class Attack4e {
     /**
      * Whether an attack result is a miss (includes fumbles and immune targets).
      *
-     * @param {AttackResult} result
+     * @param {AttackOutcome} result
      * @returns {boolean}
      */
     static isMiss(result) {
@@ -150,7 +208,7 @@ class Attack4e {
     /**
      * Whether the target was immune to the attack.
      *
-     * @param {AttackResult} result
+     * @param {AttackOutcome} result
      * @returns {boolean}
      */
     static isImmune(result) {
@@ -160,7 +218,7 @@ class Attack4e {
     /**
      * Whether the attack roll was a fumble.
      *
-     * @param {AttackResult} result
+     * @param {AttackOutcome} result
      * @returns {boolean}
      */
     static isFumble(result) {
@@ -170,8 +228,8 @@ class Attack4e {
     /**
      * Filter attack results to only the targets that were hit.
      *
-     * @param {AttackResult[]} results
-     * @returns {AttackResult[]}
+     * @param {AttackOutcome[]} results
+     * @returns {AttackOutcome[]}
      */
     static hits(results) {
         return results.filter(r => this.isHit(r));
@@ -180,8 +238,8 @@ class Attack4e {
     /**
      * Filter attack results to only the targets that were missed.
      *
-     * @param {AttackResult[]} results
-     * @returns {AttackResult[]}
+     * @param {AttackOutcome[]} results
+     * @returns {AttackOutcome[]}
      */
     static misses(results) {
         return results.filter(r => this.isMiss(r));
@@ -340,7 +398,7 @@ class Attack4e {
      * Check if an attack result was a critical hit.
      * The crit state is computed by the system and carried on the AttackResult.
      *
-     * @param {AttackResult} result An attack result from rollAttack
+     * @param {AttackOutcome} result An attack result from rollAttack
      * @returns {boolean} Whether the attack was a critical hit
      */
     static isCritical(result) {
