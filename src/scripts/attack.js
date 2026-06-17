@@ -81,6 +81,109 @@ class AttackResult extends Array {
     hasHit() { return this.some(o => Attack4e.isHit(o)); }
     /** @returns {boolean} */
     hasMiss() { return this.some(o => Attack4e.isMiss(o)); }
+
+    /**
+     * Enqueue a damage application. Resolved and applied (one roll for the group,
+     * each target taking its own resistances) when run() executes.
+     *
+     * @param {Object} [opts={}]
+     * @param {boolean} [opts.fastForward=true] Skip the damage dialog (item path)
+     * @param {string} [opts.formula] Roll this formula instead of the item's damage
+     * @param {string} [opts.type] Damage type for the formula path
+     * @param {boolean} [opts.trueDamage] Ignore resistances
+     * @param {number} [opts.multiplier] Application multiplier (0.5 half, 2 double)
+     * @param {Damage4e} [opts.damage] A pre-rolled Damage4e to reuse (shared hit/miss roll)
+     * @returns {AttackResult} this
+     */
+    applyDamage(opts = {}) {
+        this._queue.push({ kind: 'damage', opts });
+        return this;
+    }
+
+    /**
+     * Enqueue a VFX impact on each target.
+     *
+     * @param {Object} [opts={}]
+     * @param {string} [opts.type] Power-source key for VFX4e (e.g. 'LIGHTNING')
+     * @returns {AttackResult} this
+     */
+    applyVFX(opts = {}) {
+        this._queue.push({ kind: 'vfx', opts });
+        return this;
+    }
+
+    /**
+     * Enqueue an effect application on each target.
+     *
+     * @param {Object} opts
+     * @param {Object} opts.data Effect data (EffectLibrary entry / createEffect input)
+     * @param {string} opts.durationType e.g. 'endOfUserTurn' | 'saveEnds'
+     * @returns {AttackResult} this
+     */
+    applyEffect(opts = {}) {
+        this._queue.push({ kind: 'effect', opts });
+        return this;
+    }
+
+    /**
+     * Execute the queued operations in order. One damage roll per damage op is
+     * shared across the group; each target takes its own resistances. Per-target
+     * failures are collected, not thrown, so one bad target does not abort the rest.
+     *
+     * @returns {Promise<AttackResult>} this (with `.errors` populated on failures)
+     */
+    async run() {
+        if (this._consumed) {
+            console.warn('AttackResult.run() called twice; ignoring the second call.');
+            return this;
+        }
+        this._consumed = true;
+
+        /** @type {Error[]} */
+        this.errors = [];
+
+        for (const { kind, opts } of this._queue) {
+            if (kind === 'damage') await this._runDamage(opts);
+            else if (kind === 'vfx') await this._runVFX(opts);
+            else if (kind === 'effect') await this._runEffect(opts);
+        }
+
+        return this;
+    }
+
+    /** @private */
+    async _runDamage(opts) {
+        const base = opts.damage ?? (opts.formula
+            ? await Damage4e.fromFormula(opts.formula, opts.type).by(this._caster).roll()
+            : await Damage4e.fromItem(this._item).roll());
+
+        const dmg = (opts.trueDamage || opts.multiplier != null)
+            ? base.clone({ bypass: opts.trueDamage, multiplier: opts.multiplier })
+            : base;
+
+        for (const o of this) {
+            try { await o.target.damage(dmg); }
+            catch (err) { this.errors.push(err); console.error('applyDamage failed for', o.target?.name, err); }
+        }
+    }
+
+    /** @private */
+    async _runVFX(opts) {
+        const type = opts.type?.trim();
+        for (const o of this) {
+            try { await VFX4e.impact(o.target, type); }
+            catch (err) { this.errors.push(err); console.error('applyVFX failed for', o.target?.name, err); }
+        }
+    }
+
+    /** @private */
+    async _runEffect(opts) {
+        const effect = Effect4e.createEffect(opts.data, opts.durationType, this._caster);
+        for (const o of this) {
+            try { await o.target.replaceEffect(effect); }
+            catch (err) { this.errors.push(err); console.error('applyEffect failed for', o.target?.name, err); }
+        }
+    }
 }
 
 class Attack4e {
@@ -100,6 +203,45 @@ class Attack4e {
      * @property {string} type - Damage type (fire, lightning, etc.)
      * @property {Character} target - The target that took damage
      */
+
+    /** @type {Item|null} */
+    _item = null;
+    /** @type {Character|null} */
+    _caster = null;
+
+    /**
+     * @param {Item} item The power/item driving this attack
+     */
+    constructor(item) {
+        this._item = item;
+        this._caster = item?.actor ? Character.fromActor(item.actor) : null;
+    }
+
+    /**
+     * Build an attack bound to an item (its actor becomes the caster).
+     *
+     * @param {Item} item
+     * @returns {Attack4e}
+     */
+    static fromItem(item) {
+        return new Attack4e(item);
+    }
+
+    /**
+     * Instance attack roll. Same hit determination as the static path, but
+     * returns an AttackResult carrying this attack's caster (for the run() queue).
+     *
+     * @param {Character|Character[]} targets
+     * @param {Object} [options={}]
+     * @param {boolean} [options.fastForward=false]
+     * @param {string} [options.rollMode]
+     * @returns {Promise<AttackResult>}
+     */
+    async rollAttack(targets, options = {}) {
+        const result = await Attack4e.rollAttack(this._item, targets, options);
+        result._caster = this._caster;
+        return result;
+    }
 
     /**
      * Perform an attack using the item's attack configuration
