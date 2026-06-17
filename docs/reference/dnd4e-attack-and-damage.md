@@ -515,3 +515,113 @@ clickRollMessageDamageButtons (chat.js:292)  |  applyChatCardDamage (chat.js:394
 > Le point de jonction propre est **`calcDamage` / `applyDamage`** côté acteur (couche métier dnd4e),
 > appelés depuis notre macro — exactement la frontière que franchissent déjà les boutons natifs, mais
 > avec l'élévation de permissions qui nous manque côté joueur.
+
+---
+
+## 8. Le moteur de dégâts bonus / « riders » (extra damage)
+
+> Section critique pour `Damage4e` : comment garder la main sur l'injection de dégâts
+> supplémentaires (ex. « +4+@cha aux dégâts de type `lightning` »). Tout est dans
+> `Helper.applyEffects`, et **rien n'est stocké par type de dégât** sur l'acteur.
+
+### 8.1 Il n'existe AUCUN bonus offensif keyé par type de dégât
+
+- `actor.system.bonuses` est **vestigial** : non défini dans le data model, lu seulement avec
+  `|| {}`, jamais écrit. `item.rollDamage` lit `bonuses.<actionType>.damage` (item.js:2211-2225) où
+  `actionType` est le type d'action (`standard`/`move`/…), pas l'élément — et c'est un **nombre plat,
+  non typé**. Mort en pratique.
+- `actor.system.modifiers` (combatant.js:54-58) : clés `attack | damage | abilities | skills |
+  defences`, sous-typées par **source** (`feat/item/power/race/untyped`), **jamais par élément**.
+- **Conclusion : les riders typés viennent exclusivement d'Active Effects**, via `Helper.applyEffects`.
+
+### 8.2 `Helper.applyEffects(...)` — le moteur (helper.js:183)
+
+```js
+static async applyEffects(rollData, actor, powerData = {}, weaponData = null,
+                          effectType, extraDamage = [], target = false, options = {})
+```
+- Lit les effets via `actor.allApplicableEffects()`, et pour chaque `effect.system.changes`
+  (tableau de changes **custom dnd4e**, pas la mécanique AE standard de Foundry) retient les changes
+  dont la clé commence par `power.<effectType>` / `weapon.<effectType>` (`grants.<effectType>` si
+  `target`). (helper.js:208-221)
+- **Grammaire de clé** : `<power|weapon|grants>.<attack|damage|defence>.<keyword…>.<bonusType>`.
+  - Les segments du milieu sont des **mots-clés conditionnels** ; le dernier est le **type de bonus**.
+  - Si `bonusType === "roll"` → la **valeur** est une formule jetée et ses termes poussés dans
+    `extraDamage`. **Le type de dégât est porté par le flavor DANS la valeur** (ex. valeur
+    `(2d6)[fire]` → poussé `(2d6)[fire]`). Le type n'est PAS dans la clé. (helper.js:536-549)
+  - Sinon (`feat/item/power/race/untyped`) → total plat poussé dans `options.bonuses[bonusType]`,
+    consommé par `Roll4e.processBonuses()` (Roll.js:42-57 ; non typé, « ne stacke pas » → max par type).
+
+### 8.3 Le matching de mots-clés — d'où vient le type (helper.js:245, 561)
+
+```js
+const suitableKeywords = ["global"];
+this._addKeywords(suitableKeywords, powerData.damageType);   // ← LE type de dégât vient d'ICI
+this._addKeywords(suitableKeywords, powerData.effectType);
+if (weaponData) { /* weaponGroup, properties, weaponData.damageType … */ }
+```
+```js
+static _addKeywords(suitableKeywords, keywordsActive) {        // pousse les clés à true
+  if (keywordsActive) for (const [k, v] of Object.entries(keywordsActive)) if (v === true) suitableKeywords.push(k);
+}
+```
+`_applyEffectsInternal` (helper.js:509-522) ne retient un rider que si **tous** ses mots-clés du
+milieu (`keyParts.slice(2,-1)`) sont dans `suitableKeywords`. Donc un rider
+`power.damage.lightning.roll` ne se déclenche que si `"lightning" ∈ suitableKeywords`, c.-à-d. si
+**`powerData.damageType.lightning === true`**.
+
+### 8.4 ⚠️ Le chemin SANS item ne déclenche PAS les riders typés (par défaut)
+
+`item.rollDamage` passe le vrai `powerData` (avec `damageType`) → riders typés OK. Mais le chemin
+item-less (l'enrichisseur `[[/damage]]`, `enrichers/roll.js:510-513`) fait `powerData =
+rollData.item` = **`undefined`** → `_addKeywords(suitableKeywords, undefined)` n'ajoute rien →
+`"lightning"` absent → **le rider `power.damage.lightning.roll` ne tire pas**. Le `config.damageType`
+de l'enrichisseur ne sert qu'au tag `(...)[lightning]` de la formule et au flavor du chat — un canal
+**distinct** du matching de mots-clés.
+
+**Pour rejouer un rider typé sans item, il FAUT synthétiser un `powerData` portant le type :**
+```js
+const powerData = { name: "Lightning damage", damageType: { lightning: true } };
+await game.helper.applyEffects(rollData, actor, powerData, null, "damage", extraDamage, false, options);
+// → "lightning" ∈ suitableKeywords → power.damage.lightning.roll pousse (4 + @cha) dans extraDamage
+```
+(Limite v1 : seuls les mots-clés issus de `damageType` sont fournis ; les riders conditionnés à la
+**source de pouvoir** / mots-clés custom exigeraient d'enrichir `powerData.effectType`/etc., ou de
+passer le vrai `powerData` de l'item d'origine.)
+
+---
+
+## 9. Accès runtime aux internes (depuis un script/macro)
+
+Confirmés dans `module/dnd4e.js` (hook `init`) :
+
+| Référence runtime | Cible | Source |
+|---|---|---|
+| `game.helper` | classe `Helper` (méthodes statiques : `applyEffects`, `evaluateFormula`, `getDataObject`, `getWeaponUse`, `tokensToActors`) | dnd4e.js:89 |
+| `CONFIG.Dice.rolls[0]` | classe `Roll4e` (+ `.DEFAULT_OPTIONS.bonuses`) | dnd4e.js:121 |
+| `CONFIG.Dice.rolls[1]` / `[2]` | `MultiAttackRoll` / `RollWithOriginalExpression` | dnd4e.js:122-123 |
+| `CONFIG.TextEditor.enrichers.find(e => e.id === "DND4E.roll")` | namespace `enrichers/roll.js` → expose `handleRoll` (clic → jet réel), `enricher`, `pattern` | dnd4e.js:273 |
+| `item.rollAttack(...)` / `item.rollDamage(...)` | méthodes publiques d'instance `Item4e` | item.js:1574 / 2060 |
+
+**NON exposés** (inaccessibles directement) : `damageRoll` / `d20Roll` (dice.js), et le privé
+`rollDamageHealing` (enrichers/roll.js). `game.dnd4e` ne contient **pas** `helper`/`dice`/`roll`.
+
+### Recette « jet typé item-less avec riders » (réutilise le moteur, ne réinvente rien)
+```js
+const actor   = caster.actor;
+const rollData = actor.getRollData();
+const Roll4e  = CONFIG.Dice.rolls[0];
+const options = { bonuses: foundry.utils.deepClone(Roll4e.DEFAULT_OPTIONS.bonuses) };
+const powerData = { name: `${type} damage`, damageType: { [type]: true } };
+const extra = [];
+await game.helper.applyEffects(rollData, actor, powerData, null, "damage", extra, false, options);
+const formula = [`(${baseFormula})[${type}]`, ...extra].join(" + ");
+const roll = await new Roll4e(formula, rollData, options).evaluate();
+await roll.toMessage({ speaker: ChatMessage.getSpeaker({ actor }), flavor: `${type} damage` });
+// puis lire roll.terms[].flavor → [[valeur, type]] pour appliquer via notre macro (calcDamage)
+```
+- On garde le `Roll4e` en main (≠ enrichisseur, qui ne rend qu'une carte + boutons « Apply »
+  inutiles pour nous). `processBonuses()` (à l'évaluation) replie les bonus plats
+  `options.bonuses.*` ; les riders `roll` typés sont déjà dans `extra`.
+- C'est exactement la mécanique que l'enrichisseur exécute en interne (`applyEffects` + jet), mais
+  pilotée par nos références runtime confirmées.
