@@ -134,6 +134,35 @@ class Target {
     }
 
     /**
+     * Build a Target from an item, hydrating the geometry from
+     * `system.rangeType`/`system.area`/`system.range` when available.
+     * Convenience: shape verbs called afterwards take precedence.
+     *
+     * @param {Item} item The power's item (must have an actor)
+     * @returns {Target}
+     */
+    static fromItem(item) {
+        const actor = item.actor ?? item.parent;
+        if (!actor) throw Error('Target.fromItem requires an item with an actor');
+
+        const target = Target.fromCharacter(Character.fromActor(actor));
+        const sys = item.system ?? {};
+        const area = Number(sys.area) || 0;
+        const range = Number(sys.range) || 0;
+
+        switch (sys.rangeType) {
+            case 'melee':       return target.melee(range || 1);
+            case 'range':
+            case 'ranged':      return target.ranged(range);
+            case 'closeBurst':  return target.closeBurst(area);
+            case 'closeBlast':  return target.closeBlast(area);
+            case 'rangeBurst':  return target.areaBurst(area).within(range);
+            case 'rangeBlast':  return target.closeBlast(area).within(range);
+            default:            return target;
+        }
+    }
+
+    /**
      * 
      * @param {number} range 
      */
