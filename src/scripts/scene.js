@@ -65,4 +65,28 @@ class Scene4e {
             token.disposition === disposition && this.isAdjacent(targetToken, token)
         );
     }
+
+    /**
+     * Énumère les cases (coins haut-gauche en pixels) dans le rayon Chebyshev
+     * `range` autour de `origin`, centre inclus. Sur grille carrée, l'ensemble
+     * forme le carré (2·range+1)×(2·range+1) attendu en 4e.
+     *
+     * @param {{x:number, y:number}} origin Point d'origine (pixels)
+     * @param {number} range Rayon en cases
+     * @returns {Array<{x:number, y:number}>} Coins haut-gauche pixel des cases
+     */
+    static cellsWithin(origin, range) {
+        const center = canvas.grid.getCenterPoint(origin);
+        const { i: ci, j: cj } = canvas.grid.getOffset(center);
+
+        /** @type {Array<{x:number, y:number}>} */
+        const cells = [];
+        for (let di = -range; di <= range; di++) {
+            for (let dj = -range; dj <= range; dj++) {
+                const point = canvas.grid.getTopLeftPoint({ i: ci + di, j: cj + dj });
+                cells.push({ x: point.x, y: point.y });
+            }
+        }
+        return cells;
+    }
 }

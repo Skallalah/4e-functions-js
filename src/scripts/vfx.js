@@ -6,6 +6,23 @@
  */
 class VFX4e {
     /**
+     * Asset JB2A unique servant de marqueur de sélection (anneau runique rotatif).
+     * Valeur par défaut alignée sur un asset déjà référencé dans PowerSources
+     * (donc installé). Swap d'une ligne si un autre asset est préféré
+     * (à valider dans le Sequencer Database Viewer).
+     *
+     * @type {string}
+     */
+    static TARGET_MARKER_ASSET = 'jb2a.magic_signs.rune.abjuration.loop.blue';
+
+    /**
+     * Identifiant de la couche de surlignage de portée (GridHighlight, local au client).
+     *
+     * @type {string}
+     */
+    static RANGE_HIGHLIGHT_ID = 'target-range';
+
+    /**
      * Power source theme configurations
      * Each theme defines default visual effect files for different effect types
      */
@@ -303,6 +320,87 @@ class VFX4e {
         }
 
         return sequence.play();
+    }
+
+    /**
+     * Pose un marqueur de sélection rotatif et persistant sur un token.
+     * Idempotent : repose proprement si déjà présent (nommé par token).
+     *
+     * @param {TokenDocument | Token} token Le token ciblé
+     * @returns {void}
+     */
+    static targetMarker(token) {
+        const id = token.id;
+        new Sequence()
+            .effect()
+                .file(VFX4e.TARGET_MARKER_ASSET)
+                .atLocation(token)
+                .scaleToObject(1.6)
+                .persist()
+                .name(`target-marker-${id}`)
+                .fadeIn(150)
+                .fadeOut(150)
+                .loopProperty('sprite', 'rotation', { from: 0, to: 360, duration: 8000 })
+                .belowTokens(false)
+            .play();
+    }
+
+    /**
+     * Retire le marqueur de sélection d'un token.
+     *
+     * @param {TokenDocument | Token} token Le token concerné
+     * @returns {void}
+     */
+    static clearTargetMarker(token) {
+        Sequencer.EffectManager.endEffects({ name: `target-marker-${token.id}` });
+    }
+
+    /**
+     * Retire tous les marqueurs de sélection de la scène (filet de sécurité au cleanup).
+     *
+     * @returns {void}
+     */
+    static clearAllTargetMarkers() {
+        Sequencer.EffectManager.endEffects({ name: 'target-marker-*' });
+    }
+
+    /**
+     * Peint, localement au client, la zone de portée autour d'une origine
+     * (aide visuelle « où je peux cliquer »). Carré centré sur grille carrée.
+     *
+     * @param {{x:number, y:number}} origin Point d'origine (pixels)
+     * @param {number} range Rayon de portée en cases
+     * @param {Object} [options]
+     * @param {string} [options.color='#33aaff'] Couleur de remplissage
+     * @param {number} [options.alpha=0.18] Opacité du remplissage
+     * @param {number} [options.border=0x33aaff] Couleur de bordure
+     * @returns {void}
+     */
+    static rangeHighlight(origin, range, options = {}) {
+        const { color = '#33aaff', alpha = 0.18, border = 0x33aaff } = options;
+        const id = VFX4e.RANGE_HIGHLIGHT_ID;
+
+        VFX4e.clearRangeHighlight();
+        canvas.interface.grid.addHighlightLayer(id);
+
+        for (const cell of Scene4e.cellsWithin(origin, range)) {
+            canvas.interface.grid.highlightPosition(id, {
+                x: cell.x,
+                y: cell.y,
+                color,
+                alpha,
+                border
+            });
+        }
+    }
+
+    /**
+     * Efface la couche de surlignage de portée.
+     *
+     * @returns {void}
+     */
+    static clearRangeHighlight() {
+        canvas.interface.grid.clearHighlightLayer(VFX4e.RANGE_HIGHLIGHT_ID);
     }
 
     /**
