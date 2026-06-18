@@ -25,5 +25,4 @@ dist-ssr
 
 # Generated files
 /scripts/*
-/module.json
 /languages
