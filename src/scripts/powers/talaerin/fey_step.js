@@ -1,6 +1,6 @@
 const talaerin = Character.fromName('Talaerin Silomorel');
 
-const target = await Target.fromCharacter(talaerin).range(5).selectTarget(this.item.img);
+const target = await Target.fromCharacter(talaerin).ranged(5).pickPoint(this.item.img);
 
 if (!target) return;
 

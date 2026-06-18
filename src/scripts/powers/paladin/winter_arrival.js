@@ -21,8 +21,8 @@ async function main(ref) {
 
     // Select target location interactively
     const targetLocation = await Target.fromCharacter(paladin)
-        .range(teleportRange)
-        .selectTarget(ref.item.img);
+        .ranged(teleportRange)
+        .pickPoint(ref.item.img);
 
     if (!targetLocation) return; // User cancelled
 
