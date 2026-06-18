@@ -167,6 +167,36 @@ class Target {
     }
 
     /**
+     * Mode point : sélection privée d'une case (vide ou non) dans la portée,
+     * via le crosshair Portal. Renvoie un Target dont l'origine est le point
+     * choisi (ex. destination de téléport).
+     *
+     * @param {string} [icon] Chemin d'icône du curseur de ciblage
+     * @returns {Promise<Target|null>} Target centré sur le point choisi, ou null si annulé
+     */
+    async pickPoint(icon) {
+        if (this._origins.length !== 1) throw Error('cannot pick a point from more than one origin');
+
+        const portal = new Portal()
+            .color('#ffffff')
+            .origin(this._origins[0]);
+
+        if (icon) portal.texture(icon);
+
+        while (true) {
+            const result = await portal.pick();
+            if (result === false) return null; // annulé
+
+            if (!Scene4e.isWithin(this._origins[0], result, this._range)) {
+                ui.notifications.warn(`Please target one square within ${this._range} squares.`);
+                continue;
+            }
+
+            return new Target([result], this._range, this._radius);
+        }
+    }
+
+    /**
      * @param {string} icon the path of the icon
      * @returns {Target | null}
      */
