@@ -6,6 +6,9 @@ class Target {
     _type = 'creatures'; // the type of targets concerned by the power
     _disposition = null; // the disposition of the caster, null by default
 
+    /** @type {('closeBurst'|'rangeBurst'|'closeBlast')|null} Forme d'aire (clé dnd4e), null en mode ciblé/point */
+    _dnd4eRangeType = null;
+
     constructor(origins, range = 0, radius = 0) {
         this._origins = origins;
         this._range = range;
@@ -67,8 +70,85 @@ class Target {
     }
 
     /**
-     * 
-     * @param {'creatures' | 'allies' | 'enemies'} type 
+     * Corps à corps : portée = allonge, cible directe.
+     *
+     * @param {number} [reach=1] Allonge en cases
+     * @returns {Target}
+     */
+    melee(reach = 1) {
+        this._range = reach;
+        this._radius = 0;
+        this._dnd4eRangeType = null;
+        return this;
+    }
+
+    /**
+     * À distance : portée = r, cible directe.
+     *
+     * @param {number} r Portée en cases
+     * @returns {Target}
+     */
+    ranged(r) {
+        this._range = r;
+        this._radius = 0;
+        this._dnd4eRangeType = null;
+        return this;
+    }
+
+    /**
+     * Close burst n : aire émanant du lanceur, rayon n.
+     *
+     * @param {number} n Rayon du burst en cases
+     * @returns {Target}
+     */
+    closeBurst(n) {
+        this._range = 0;
+        this._radius = n;
+        this._dnd4eRangeType = 'closeBurst';
+        return this;
+    }
+
+    /**
+     * Area burst n (à compléter par `.within(r)`) : burst de rayon n centré
+     * sur un point choisi dans la portée r. (dnd4e : rangeType 'rangeBurst'.)
+     *
+     * @param {number} n Rayon du burst en cases
+     * @returns {Target}
+     */
+    areaBurst(n) {
+        this._radius = n;
+        this._dnd4eRangeType = 'rangeBurst';
+        return this;
+    }
+
+    /**
+     * Portée du point d'origine d'une aire (utilisé avec `areaBurst`).
+     *
+     * @param {number} r Portée en cases
+     * @returns {Target}
+     */
+    within(r) {
+        this._range = r;
+        return this;
+    }
+
+    /**
+     * Close blast x : carré X×X axis-aligned, ancré au lanceur, AUCUN pivot.
+     * (dnd4e : rangeType 'closeBlast'.)
+     *
+     * @param {number} x Longueur du côté en cases
+     * @returns {Target}
+     */
+    closeBlast(x) {
+        this._range = 0;
+        this._radius = x;
+        this._dnd4eRangeType = 'closeBlast';
+        return this;
+    }
+
+    /**
+     *
+     * @param {'creatures' | 'allies' | 'enemies'} type
      */
     type(type) {
         this._type = type;
@@ -162,8 +242,28 @@ class Target {
     }
 
     /**
+     * Le token satisfait-il le filtre de type (`creatures`/`allies`/`enemies`)
+     * au regard de la disposition du lanceur ?
+     *
+     * @param {TokenDocument | Token} token
+     * @returns {boolean}
+     */
+    _matchesType(token) {
+        if (this._type === 'creatures' || this._disposition === null) return true;
+        const disposition = token.document?.disposition ?? token.disposition;
+        switch (this._type) {
+            case 'allies':
+                return this._disposition === disposition;
+            case 'enemies':
+                return this._disposition !== disposition;
+            default:
+                return true;
+        }
+    }
+
+    /**
      * Get the Character from the Target object.
-     * 
+     *
      * @returns {Character[]}
      */
     get() {
@@ -171,20 +271,7 @@ class Target {
 
         let targets = tokens.filter(t => this._origins.some(origin => Scene4e.isWithin(origin, t, this._radius)));
 
-        if (this._type !== 'creatures' && this._disposition !== null) {
-            const typeFilter = (token) => {
-                switch (this._type) {
-                    case 'allies':
-                        return this._disposition === token?.disposition;
-                    case 'enemies':
-                        return this._disposition !== token?.disposition;
-                    default:
-                        return true;
-                }
-            };
-
-            targets = targets.filter(typeFilter)
-        }
+        targets = targets.filter(token => this._matchesType(token));
 
         // Dedupe by TOKEN (not actor): two identical monsters are two targets,
         // each with its own resistances and a unique composite Character.id.
