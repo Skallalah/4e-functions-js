@@ -361,6 +361,42 @@ class Target {
     }
 
     /**
+     * Area mode: place a square Scene Region (shared with all), then return the
+     * Characters covered by the area — derived through the same path as get()
+     * (never a raw token/actor). The region is auto-removed after `lifetime` ms.
+     *
+     * - areaBurst(n).within(r): first picks a point within range.
+     * - closeBurst(n) / closeBlast(x): area anchored to the caster.
+     *
+     * @param {Object} [opts]
+     * @param {string} [opts.icon] Cursor icon for point selection
+     * @param {number} [opts.lifetime=6000] Region display duration (ms)
+     * @returns {Promise<Character[]>} The covered targets, or [] if cancelled
+     */
+    async place({ icon, lifetime = 6000 } = {}) {
+        if (!this._dnd4eRangeType) throw Error('place() requires an area verb (closeBurst/areaBurst/closeBlast)');
+
+        // 1. Determine the area's anchor point.
+        let anchor;
+        if (this._range > 0) {
+            const point = await this.pickPoint(icon); // areaBurst().within(r)
+            if (!point) return [];
+            anchor = point.origin;
+            this._origins = [anchor]; // get() collects around the chosen point
+        } else {
+            anchor = this._origins[0]; // closeBurst / closeBlast: anchored to the caster
+        }
+
+        // 2. Place the shared Region (visual for everyone), auto-removed.
+        const rect = Scene4e.areaRectangle(anchor, this._dnd4eRangeType, this._radius);
+        const region = await Scene4e.placeAreaRegion(rect);
+        setTimeout(() => region?.delete?.(), lifetime);
+
+        // 3. Return the targets through the same path as get().
+        return this.get();
+    }
+
+    /**
      * @param {string} icon the path of the icon
      * @returns {Target | null}
      */
