@@ -1,3 +1,87 @@
+/**
+ * Panneau flottant non-modal pour la sélection multi-cibles (compteur X/N + actions).
+ * Usage interne à Target.pick() — pas une API de pouvoir.
+ */
+class TargetSelectionPanel {
+    /** @type {HTMLDivElement} */
+    _el;
+    /** @type {HTMLSpanElement} */
+    _counter;
+    /** @type {HTMLButtonElement} */
+    _validateBtn;
+    /** @type {number} */
+    _count;
+    /** @type {(() => void)|null} */
+    _onValidate = null;
+    /** @type {(() => void)|null} */
+    _onCancel = null;
+    /** @type {(e: KeyboardEvent) => void} */
+    _onKeyDown;
+
+    /**
+     * @param {Object} opts
+     * @param {number} opts.count Nombre de cibles attendu
+     */
+    constructor({ count }) {
+        this._count = count;
+
+        const el = document.createElement('div');
+        el.className = 'target-selection-panel';
+        el.style.cssText = [
+            'position:absolute', 'top:80px', 'left:50%', 'transform:translateX(-50%)',
+            'z-index:60', 'padding:8px 14px', 'border-radius:8px',
+            'background:rgba(0,0,0,0.78)', 'color:#fff', 'font-size:14px',
+            'display:flex', 'gap:10px', 'align-items:center',
+            'box-shadow:0 2px 8px rgba(0,0,0,0.5)', 'pointer-events:auto'
+        ].join(';');
+
+        this._counter = document.createElement('span');
+        this._counter.textContent = `Cibles : 0 / ${count}`;
+
+        this._validateBtn = document.createElement('button');
+        this._validateBtn.type = 'button';
+        this._validateBtn.textContent = 'Valider';
+        this._validateBtn.style.cssText = 'pointer-events:auto;cursor:pointer';
+        this._validateBtn.disabled = true;
+        this._validateBtn.addEventListener('click', () => this._onValidate?.());
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Annuler';
+        cancelBtn.style.cssText = 'pointer-events:auto;cursor:pointer';
+        cancelBtn.addEventListener('click', () => this._onCancel?.());
+
+        el.append(this._counter, this._validateBtn, cancelBtn);
+        (document.getElementById('interface') ?? document.body).appendChild(el);
+        this._el = el;
+
+        this._onKeyDown = (e) => { if (e.key === 'Escape') this._onCancel?.(); };
+        window.addEventListener('keydown', this._onKeyDown);
+    }
+
+    /**
+     * @param {number} current Cibles actuellement sélectionnées
+     * @param {number} total Cibles attendues
+     * @returns {void}
+     */
+    update(current, total) {
+        this._counter.textContent = `Cibles : ${current} / ${total}`;
+        this._validateBtn.disabled = current < 1;
+    }
+
+    /** @param {() => void} cb @returns {void} */
+    onValidate(cb) { this._onValidate = cb; }
+
+    /** @param {() => void} cb @returns {void} */
+    onCancel(cb) { this._onCancel = cb; }
+
+    /** @returns {void} */
+    destroy() {
+        window.removeEventListener('keydown', this._onKeyDown);
+        this._el.remove();
+    }
+}
+
 class Target {
     _origins = [];
     _range = 0; // range self by default
