@@ -281,6 +281,86 @@ class Target {
     }
 
     /**
+     * Targeted mode: interactive selection of 1..count creatures using Foundry's
+     * native targeting (free toggle/deselection), with range highlight, a marker
+     * placed on each target and an X/N counter. Live validation of range and type.
+     * Auto-resolves once `count` is reached.
+     *
+     * @param {Object} [opts]
+     * @param {number} [opts.count=1] Maximum number of targets
+     * @param {string} [opts.icon] (reserved) icon — unused by native targeting
+     * @returns {Promise<Character[]>} Selected targets, or [] if cancelled
+     */
+    async pick({ count = 1, icon } = {}) {
+        if (this._origins.length !== 1) throw Error('cannot pick from more than one origin');
+        const origin = this._origins[0];
+
+        // Start from a clean selection.
+        for (const t of Array.from(game.user.targets)) t.setTarget(false, { releaseOthers: false });
+
+        VFX4e.rangeHighlight(origin, this._range);
+        const panel = new TargetSelectionPanel({ count });
+
+        /** @type {Map<string, Token>} */
+        const selected = new Map();
+
+        let resolveFn;
+        const done = new Promise(resolve => { resolveFn = resolve; });
+
+        /**
+         * @param {User} user
+         * @param {Token} token
+         * @param {boolean} targeted
+         */
+        const onTarget = (user, token, targeted) => {
+            if (user.id !== game.user.id) return;
+
+            if (targeted) {
+                const doc = token.document ?? token;
+                if (!Scene4e.isWithin(origin, doc, this._range)) {
+                    token.setTarget(false, { releaseOthers: false });
+                    ui.notifications.warn(`Please target a creature within ${this._range} squares.`);
+                    return;
+                }
+                if (!this._matchesType(token)) {
+                    token.setTarget(false, { releaseOthers: false });
+                    ui.notifications.warn(`That target is not a valid ${this._type.slice(0, -1)}.`);
+                    return;
+                }
+                if (!selected.has(token.id) && selected.size >= count) {
+                    token.setTarget(false, { releaseOthers: false });
+                    ui.notifications.warn(`You can only select ${count} target${count > 1 ? 's' : ''}.`);
+                    return;
+                }
+                selected.set(token.id, token);
+                VFX4e.targetMarker(token);
+            } else {
+                selected.delete(token.id);
+                VFX4e.clearTargetMarker(token);
+            }
+
+            panel.update(selected.size, count);
+            if (selected.size === count) resolveFn('validate');
+        };
+
+        Hooks.on('targetToken', onTarget);
+        panel.onValidate(() => resolveFn('validate'));
+        panel.onCancel(() => resolveFn('cancel'));
+
+        const outcome = await done;
+
+        // Cleanup (always).
+        Hooks.off('targetToken', onTarget);
+        VFX4e.clearRangeHighlight();
+        for (const token of selected.values()) VFX4e.clearTargetMarker(token);
+        for (const t of Array.from(game.user.targets)) t.setTarget(false, { releaseOthers: false });
+        panel.destroy();
+
+        if (outcome === 'cancel') return [];
+        return [...selected.values()].map(token => Character.fromToken(token.document ?? token));
+    }
+
+    /**
      * @param {string} icon the path of the icon
      * @returns {Target | null}
      */
