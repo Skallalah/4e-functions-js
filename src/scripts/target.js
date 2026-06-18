@@ -1,6 +1,6 @@
 /**
- * Panneau flottant non-modal pour la sélection multi-cibles (compteur X/N + actions).
- * Usage interne à Target.pick() — pas une API de pouvoir.
+ * Non-modal floating panel for multi-target selection (X/N counter + actions).
+ * Internal to Target.pick() — not a power-facing API.
  */
 class TargetSelectionPanel {
     /** @type {HTMLDivElement} */
@@ -20,7 +20,7 @@ class TargetSelectionPanel {
 
     /**
      * @param {Object} opts
-     * @param {number} opts.count Nombre de cibles attendu
+     * @param {number} opts.count Expected number of targets
      */
     constructor({ count }) {
         this._count = count;
@@ -36,18 +36,18 @@ class TargetSelectionPanel {
         ].join(';');
 
         this._counter = document.createElement('span');
-        this._counter.textContent = `Cibles : 0 / ${count}`;
+        this._counter.textContent = `Targets: 0 / ${count}`;
 
         this._validateBtn = document.createElement('button');
         this._validateBtn.type = 'button';
-        this._validateBtn.textContent = 'Valider';
+        this._validateBtn.textContent = 'Confirm';
         this._validateBtn.style.cssText = 'pointer-events:auto;cursor:pointer';
         this._validateBtn.disabled = true;
         this._validateBtn.addEventListener('click', () => this._onValidate?.());
 
         const cancelBtn = document.createElement('button');
         cancelBtn.type = 'button';
-        cancelBtn.textContent = 'Annuler';
+        cancelBtn.textContent = 'Cancel';
         cancelBtn.style.cssText = 'pointer-events:auto;cursor:pointer';
         cancelBtn.addEventListener('click', () => this._onCancel?.());
 
@@ -60,12 +60,12 @@ class TargetSelectionPanel {
     }
 
     /**
-     * @param {number} current Cibles actuellement sélectionnées
-     * @param {number} total Cibles attendues
+     * @param {number} current Currently selected targets
+     * @param {number} total Expected targets
      * @returns {void}
      */
     update(current, total) {
-        this._counter.textContent = `Cibles : ${current} / ${total}`;
+        this._counter.textContent = `Targets: ${current} / ${total}`;
         this._validateBtn.disabled = current < 1;
     }
 
@@ -90,7 +90,7 @@ class Target {
     _type = 'creatures'; // the type of targets concerned by the power
     _disposition = null; // the disposition of the caster, null by default
 
-    /** @type {('closeBurst'|'rangeBurst'|'closeBlast')|null} Forme d'aire (clé dnd4e), null en mode ciblé/point */
+    /** @type {('closeBurst'|'rangeBurst'|'closeBlast')|null} Area shape (dnd4e key), null in targeted/point mode */
     _dnd4eRangeType = null;
 
     constructor(origins, range = 0, radius = 0) {
@@ -154,9 +154,9 @@ class Target {
     }
 
     /**
-     * Corps à corps : portée = allonge, cible directe.
+     * Melee: range = reach, direct target.
      *
-     * @param {number} [reach=1] Allonge en cases
+     * @param {number} [reach=1] Reach in squares
      * @returns {Target}
      */
     melee(reach = 1) {
@@ -167,9 +167,9 @@ class Target {
     }
 
     /**
-     * À distance : portée = r, cible directe.
+     * Ranged: range = r, direct target.
      *
-     * @param {number} r Portée en cases
+     * @param {number} r Range in squares
      * @returns {Target}
      */
     ranged(r) {
@@ -180,9 +180,9 @@ class Target {
     }
 
     /**
-     * Close burst n : aire émanant du lanceur, rayon n.
+     * Close burst n: area emanating from the caster, radius n.
      *
-     * @param {number} n Rayon du burst en cases
+     * @param {number} n Burst radius in squares
      * @returns {Target}
      */
     closeBurst(n) {
@@ -193,10 +193,10 @@ class Target {
     }
 
     /**
-     * Area burst n (à compléter par `.within(r)`) : burst de rayon n centré
-     * sur un point choisi dans la portée r. (dnd4e : rangeType 'rangeBurst'.)
+     * Area burst n (complete with `.within(r)`): burst of radius n centered
+     * on a point chosen within range r. (dnd4e: rangeType 'rangeBurst'.)
      *
-     * @param {number} n Rayon du burst en cases
+     * @param {number} n Burst radius in squares
      * @returns {Target}
      */
     areaBurst(n) {
@@ -206,9 +206,9 @@ class Target {
     }
 
     /**
-     * Portée du point d'origine d'une aire (utilisé avec `areaBurst`).
+     * Range of an area's origin point (used with `areaBurst`).
      *
-     * @param {number} r Portée en cases
+     * @param {number} r Range in squares
      * @returns {Target}
      */
     within(r) {
@@ -217,10 +217,10 @@ class Target {
     }
 
     /**
-     * Close blast x : carré X×X axis-aligned, ancré au lanceur, AUCUN pivot.
-     * (dnd4e : rangeType 'closeBlast'.)
+     * Close blast x: axis-aligned X×X square, anchored to the caster, NO pivot.
+     * (dnd4e: rangeType 'closeBlast'.)
      *
-     * @param {number} x Longueur du côté en cases
+     * @param {number} x Side length in squares
      * @returns {Target}
      */
     closeBlast(x) {
@@ -251,12 +251,12 @@ class Target {
     }
 
     /**
-     * Mode point : sélection privée d'une case (vide ou non) dans la portée,
-     * via le crosshair Portal. Renvoie un Target dont l'origine est le point
-     * choisi (ex. destination de téléport).
+     * Point mode: private selection of a square (empty or not) within range,
+     * via the Portal crosshair. Returns a Target whose origin is the chosen
+     * point (e.g. teleport destination).
      *
-     * @param {string} [icon] Chemin d'icône du curseur de ciblage
-     * @returns {Promise<Target|null>} Target centré sur le point choisi, ou null si annulé
+     * @param {string} [icon] Path to the targeting cursor icon
+     * @returns {Promise<Target|null>} Target centered on the chosen point, or null if cancelled
      */
     async pickPoint(icon) {
         if (this._origins.length !== 1) throw Error('cannot pick a point from more than one origin');
@@ -269,7 +269,7 @@ class Target {
 
         while (true) {
             const result = await portal.pick();
-            if (result === false) return null; // annulé
+            if (result === false) return null; // cancelled
 
             if (!Scene4e.isWithin(this._origins[0], result, this._range)) {
                 ui.notifications.warn(`Please target one square within ${this._range} squares.`);
@@ -356,8 +356,8 @@ class Target {
     }
 
     /**
-     * Le token satisfait-il le filtre de type (`creatures`/`allies`/`enemies`)
-     * au regard de la disposition du lanceur ?
+     * Does the token satisfy the type filter (`creatures`/`allies`/`enemies`)
+     * relative to the caster's disposition?
      *
      * @param {TokenDocument | Token} token
      * @returns {boolean}

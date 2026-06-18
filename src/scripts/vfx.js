@@ -6,17 +6,17 @@
  */
 class VFX4e {
     /**
-     * Asset JB2A unique servant de marqueur de sélection (anneau runique rotatif).
-     * Valeur par défaut alignée sur un asset déjà référencé dans PowerSources
-     * (donc installé). Swap d'une ligne si un autre asset est préféré
-     * (à valider dans le Sequencer Database Viewer).
+     * Single JB2A asset used as the selection marker (rotating runic ring).
+     * Default aligned with an asset already referenced in PowerSources
+     * (so it is installed). One-line swap if another asset is preferred
+     * (validate in the Sequencer Database Viewer).
      *
      * @type {string}
      */
     static TARGET_MARKER_ASSET = 'jb2a.magic_signs.rune.abjuration.loop.blue';
 
     /**
-     * Identifiant de la couche de surlignage de portée (GridHighlight, local au client).
+     * Identifier of the range highlight layer (GridHighlight, client-local).
      *
      * @type {string}
      */
@@ -323,10 +323,10 @@ class VFX4e {
     }
 
     /**
-     * Pose un marqueur de sélection rotatif et persistant sur un token.
-     * Idempotent : repose proprement si déjà présent (nommé par token).
+     * Place a persistent rotating selection marker on a token.
+     * Idempotent: re-places cleanly if already present (named per token).
      *
-     * @param {TokenDocument | Token} token Le token ciblé
+     * @param {TokenDocument | Token} token The targeted token
      * @returns {void}
      */
     static targetMarker(token) {
@@ -346,9 +346,9 @@ class VFX4e {
     }
 
     /**
-     * Retire le marqueur de sélection d'un token.
+     * Remove the selection marker from a token.
      *
-     * @param {TokenDocument | Token} token Le token concerné
+     * @param {TokenDocument | Token} token The token concerned
      * @returns {void}
      */
     static clearTargetMarker(token) {
@@ -356,7 +356,7 @@ class VFX4e {
     }
 
     /**
-     * Retire tous les marqueurs de sélection de la scène (filet de sécurité au cleanup).
+     * Remove all selection markers from the scene (cleanup safety net).
      *
      * @returns {void}
      */
@@ -365,15 +365,15 @@ class VFX4e {
     }
 
     /**
-     * Peint, localement au client, la zone de portée autour d'une origine
-     * (aide visuelle « où je peux cliquer »). Carré centré sur grille carrée.
+     * Paint, locally on the client, the range zone around an origin
+     * (visual aid: "where I can click"). Centered square on a square grid.
      *
-     * @param {{x:number, y:number}} origin Point d'origine (pixels)
-     * @param {number} range Rayon de portée en cases
+     * @param {{x:number, y:number}} origin Origin point (pixels)
+     * @param {number} range Range radius in squares
      * @param {Object} [options]
-     * @param {string} [options.color='#33aaff'] Couleur de remplissage
-     * @param {number} [options.alpha=0.18] Opacité du remplissage
-     * @param {number} [options.border=0x33aaff] Couleur de bordure
+     * @param {string} [options.color='#33aaff'] Fill color
+     * @param {number} [options.alpha=0.18] Fill opacity
+     * @param {number} [options.border=0x33aaff] Border color
      * @returns {void}
      */
     static rangeHighlight(origin, range, options = {}) {
@@ -395,7 +395,7 @@ class VFX4e {
     }
 
     /**
-     * Efface la couche de surlignage de portée.
+     * Clear the range highlight layer.
      *
      * @returns {void}
      */

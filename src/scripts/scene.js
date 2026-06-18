@@ -67,13 +67,13 @@ class Scene4e {
     }
 
     /**
-     * Énumère les cases (coins haut-gauche en pixels) dans le rayon Chebyshev
-     * `range` autour de `origin`, centre inclus. Sur grille carrée, l'ensemble
-     * forme le carré (2·range+1)×(2·range+1) attendu en 4e.
+     * Enumerate the cells (top-left pixel corners) within Chebyshev radius
+     * `range` around `origin`, center included. On a square grid, the set
+     * forms the (2·range+1)×(2·range+1) square expected in 4e.
      *
-     * @param {{x:number, y:number}} origin Point d'origine (pixels)
-     * @param {number} range Rayon en cases
-     * @returns {Array<{x:number, y:number}>} Coins haut-gauche pixel des cases
+     * @param {{x:number, y:number}} origin Origin point (pixels)
+     * @param {number} range Radius in squares
+     * @returns {Array<{x:number, y:number}>} Top-left pixel corners of the cells
      */
     static cellsWithin(origin, range) {
         const center = canvas.grid.getCenterPoint(origin);
