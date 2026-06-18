@@ -980,6 +980,16 @@ Required FoundryVTT modules (defined in `src/module.json`):
 
 System requirement: **dnd4e**
 
+**Platform requirement: FoundryVTT v13+.** The targeting area system relies on Scene Regions (`canvas.regions` / Region documents) and the UI uses ApplicationV2, both of which require v13. Use v13 APIs (e.g. `canvas.grid.getOffset`/`getTopLeftPoint`, `foundry.applications.api.ApplicationV2`).
+
+## UI Components (HTML interface)
+
+**Build any HTML UI on `ApplicationV2`** (`foundry.applications.api.ApplicationV2`), the v13 default that all of Foundry's own UI uses. **Do NOT inject raw DOM** (`document.createElement` + `appendChild` to `body`/`#interface`) for module UI — that bypasses Foundry's lifecycle/state management, is undocumented, and is brittle across updates. Raw DOM is only acceptable in throwaway macros, never in the module's classes.
+
+- **Floating / non-modal panel** (e.g. a selection counter that must keep the canvas clickable underneath): subclass `ApplicationV2` with `static DEFAULT_OPTIONS = { window: { frame: false, positioned: false } }`, build markup by overriding `_renderHTML()` + `_replaceHTML()` (no Handlebars template files needed), wire interactions and lifecycle in `_onRender()` / `_onClose()`. Show with `await app.render({ force: true })`, dismiss with `await app.close()`. Reference: `TargetSelectionPanel` in `src/scripts/target.js`.
+- **Canvas-anchored UI** that must follow a token/position: use a **HUD** (extend the relevant `hudClass`, like core's `TokenHUD`), not a free-floating Application.
+- **Gotcha:** never use `static #privateMethod` as an `actions` handler — ApplicationV2 invokes action handlers with `this` bound to the instance, which fails the private-static brand check. Wire `data-action` listeners manually in `_onRender()` instead.
+
 ## Module Registration
 
 `src/module.json` defines scripts loaded at initialization. The following scripts must be included in order:
@@ -1048,6 +1058,8 @@ Releases via GitHub Actions (`.github/workflows/publish.yml`):
 - **All utility class methods must be static** - Required for macro accessibility
 - **Use fluent APIs** - Chain methods, make code self-documenting
 - **Never bypass abstractions** - Extend classes instead of direct access
+- **HTML UI = ApplicationV2** - Never raw-DOM-inject module UI; see "UI Components"
+- **Target FoundryVTT v13+** - Scene Regions + ApplicationV2 + v13 grid APIs
 - Effect durations tie to combat rounds and initiative order
 - All cross-character modifications go through Helper4e → macros
 - Use `replaceEffect()` for unique effects (like marks)

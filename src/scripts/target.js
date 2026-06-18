@@ -1,72 +1,112 @@
 /**
- * Non-modal floating panel for multi-target selection (X/N counter + actions).
- * Internal to Target.pick() — not a power-facing API.
+ * Non-modal frameless floating panel for multi-target selection (X/N counter +
+ * actions), built on ApplicationV2 (Foundry v13). Internal to Target.pick() —
+ * not a power-facing API. Lifecycle: `await render({ force: true })` to show,
+ * `update(current, total)` to refresh live, `await close()` to dismiss.
  */
-class TargetSelectionPanel {
-    /** @type {HTMLDivElement} */
-    _el;
-    /** @type {HTMLSpanElement} */
-    _counter;
-    /** @type {HTMLButtonElement} */
-    _validateBtn;
-    /** @type {number} */
+class TargetSelectionPanel extends foundry.applications.api.ApplicationV2 {
+    /** @type {number} Currently selected targets */
+    _current = 0;
+    /** @type {number} Expected number of targets */
     _count;
     /** @type {(() => void)|null} */
     _onValidate = null;
     /** @type {(() => void)|null} */
     _onCancel = null;
-    /** @type {(e: KeyboardEvent) => void} */
-    _onKeyDown;
+    /** @type {((e: KeyboardEvent) => void)|null} */
+    _keyHandler = null;
+
+    /** @type {Partial<ApplicationConfiguration>} */
+    static DEFAULT_OPTIONS = {
+        id: 'target-selection-panel',
+        tag: 'div',
+        classes: ['target-selection-panel'],
+        // Frameless (no window chrome) and unpositioned: we control placement via inline CSS.
+        window: { frame: false, positioned: false }
+    };
 
     /**
-     * @param {Object} opts
-     * @param {number} opts.count Expected number of targets
+     * @param {Object} [opts]
+     * @param {number} [opts.count] Expected number of targets
      */
-    constructor({ count }) {
+    constructor({ count } = {}) {
+        super();
         this._count = count;
-
-        const el = document.createElement('div');
-        el.className = 'target-selection-panel';
-        el.style.cssText = [
-            'position:absolute', 'top:80px', 'left:50%', 'transform:translateX(-50%)',
-            'z-index:60', 'padding:8px 14px', 'border-radius:8px',
-            'background:rgba(0,0,0,0.78)', 'color:#fff', 'font-size:14px',
-            'display:flex', 'gap:10px', 'align-items:center',
-            'box-shadow:0 2px 8px rgba(0,0,0,0.5)', 'pointer-events:auto'
-        ].join(';');
-
-        this._counter = document.createElement('span');
-        this._counter.textContent = `Targets: 0 / ${count}`;
-
-        this._validateBtn = document.createElement('button');
-        this._validateBtn.type = 'button';
-        this._validateBtn.textContent = 'Confirm';
-        this._validateBtn.style.cssText = 'pointer-events:auto;cursor:pointer';
-        this._validateBtn.disabled = true;
-        this._validateBtn.addEventListener('click', () => this._onValidate?.());
-
-        const cancelBtn = document.createElement('button');
-        cancelBtn.type = 'button';
-        cancelBtn.textContent = 'Cancel';
-        cancelBtn.style.cssText = 'pointer-events:auto;cursor:pointer';
-        cancelBtn.addEventListener('click', () => this._onCancel?.());
-
-        el.append(this._counter, this._validateBtn, cancelBtn);
-        (document.getElementById('interface') ?? document.body).appendChild(el);
-        this._el = el;
-
-        this._onKeyDown = (e) => { if (e.key === 'Escape') this._onCancel?.(); };
-        window.addEventListener('keydown', this._onKeyDown);
     }
 
     /**
+     * Build the panel markup from the current state.
+     *
+     * @returns {Promise<string>}
+     */
+    async _renderHTML() {
+        const ready = this._current >= 1;
+        return `
+            <span class="tsp-counter">Targets: ${this._current} / ${this._count}</span>
+            <button type="button" data-action="confirm"${ready ? '' : ' disabled'}>Confirm</button>
+            <button type="button" data-action="cancel">Cancel</button>
+        `;
+    }
+
+    /**
+     * @param {string} result Markup from `_renderHTML`
+     * @param {HTMLElement} content The application root element
+     * @returns {void}
+     */
+    _replaceHTML(result, content) {
+        content.innerHTML = result;
+    }
+
+    /**
+     * Position the frameless panel and wire interactions (no style.css dependency).
+     *
+     * @returns {void}
+     */
+    _onRender() {
+        Object.assign(this.element.style, {
+            position: 'absolute', top: '80px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: '60', padding: '8px 14px', borderRadius: '8px',
+            background: 'rgba(0,0,0,0.78)', color: '#fff', fontSize: '14px',
+            display: 'flex', gap: '10px', alignItems: 'center',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.5)', pointerEvents: 'auto'
+        });
+
+        this.element.querySelector('[data-action="confirm"]')
+            ?.addEventListener('click', () => this._onValidate?.());
+        this.element.querySelector('[data-action="cancel"]')
+            ?.addEventListener('click', () => this._onCancel?.());
+
+        // Escape cancels (idempotent across re-renders).
+        if (this._keyHandler) window.removeEventListener('keydown', this._keyHandler);
+        this._keyHandler = (e) => { if (e.key === 'Escape') this._onCancel?.(); };
+        window.addEventListener('keydown', this._keyHandler);
+    }
+
+    /**
+     * @returns {void}
+     */
+    _onClose() {
+        if (this._keyHandler) {
+            window.removeEventListener('keydown', this._keyHandler);
+            this._keyHandler = null;
+        }
+    }
+
+    /**
+     * Refresh the counter and the Confirm button state in place (no re-render).
+     *
      * @param {number} current Currently selected targets
      * @param {number} total Expected targets
      * @returns {void}
      */
     update(current, total) {
-        this._counter.textContent = `Targets: ${current} / ${total}`;
-        this._validateBtn.disabled = current < 1;
+        this._current = current;
+        this._count = total;
+
+        const counter = this.element?.querySelector('.tsp-counter');
+        const confirm = this.element?.querySelector('[data-action="confirm"]');
+        if (counter) counter.textContent = `Targets: ${current} / ${total}`;
+        if (confirm) confirm.disabled = current < 1;
     }
 
     /** @param {() => void} cb @returns {void} */
@@ -74,12 +114,6 @@ class TargetSelectionPanel {
 
     /** @param {() => void} cb @returns {void} */
     onCancel(cb) { this._onCancel = cb; }
-
-    /** @returns {void} */
-    destroy() {
-        window.removeEventListener('keydown', this._onKeyDown);
-        this._el.remove();
-    }
 }
 
 class Target {
@@ -329,6 +363,7 @@ class Target {
 
         VFX4e.rangeHighlight(origin, this._range);
         const panel = new TargetSelectionPanel({ count });
+        await panel.render({ force: true });
 
         /** @type {Map<string, Token>} */
         const selected = new Map();
@@ -383,7 +418,7 @@ class Target {
         VFX4e.clearRangeHighlight();
         for (const token of selected.values()) VFX4e.clearTargetMarker(token);
         for (const t of Array.from(game.user.targets)) t.setTarget(false, { releaseOthers: false });
-        panel.destroy();
+        await panel.close();
 
         if (outcome === 'cancel') return [];
         return [...selected.values()].map(token => Character.fromToken(token.document ?? token));
