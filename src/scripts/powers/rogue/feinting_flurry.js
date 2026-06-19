@@ -36,11 +36,13 @@ async function main(ref) {
         name: 'Feinting Flurry - Defense Penalty',
         description: `<p>Until the end of the rogue's next turn, you take a -${chaMod} penalty to all defenses against the rogue's attacks.</p><p><em>Sustain Minor: The penalty persists until the end of your next turn.</em></p>`,
         icon: 'icons/conditions/afflicted.svg',
+        // Penalties stay untyped so they always stack (Effect4e.bonus picks ADD mode).
+        // See docs/reference/foundry-4e-effects.md ("Defences", "Change Mode and Priority").
         changes: [
-            { key: 'system.defences.ac.value', mode: 2, value: -chaMod, priority: 20 },
-            { key: 'system.defences.fortitude.value', mode: 2, value: -chaMod, priority: 20 },
-            { key: 'system.defences.reflex.value', mode: 2, value: -chaMod, priority: 20 },
-            { key: 'system.defences.will.value', mode: 2, value: -chaMod, priority: 20 }
+            Effect4e.bonus('system.defences.ac', -chaMod),
+            Effect4e.bonus('system.defences.fort', -chaMod),
+            Effect4e.bonus('system.defences.ref', -chaMod),
+            Effect4e.bonus('system.defences.wil', -chaMod)
         ]
     };
 

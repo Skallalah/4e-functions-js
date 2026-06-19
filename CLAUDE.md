@@ -93,6 +93,7 @@ FoundryVTT prevents players from modifying other players' character sheets. This
    - **EffectLibrary** - Centralized static effect definitions (e.g., `DIVINE_SANCTION`)
    - Effects include proper dnd4e flags for duration tracking
    - Add new effects to EffectLibrary for reusability
+   - **⚠️ Authoritative reference for `changes` keys**: [`docs/reference/foundry-4e-effects.md`](docs/reference/foundry-4e-effects.md) is the source of truth for every Active Effect modifier key, bonus type, and change mode. ALWAYS consult it before writing an effect's `changes` array. Keys are **case-sensitive** and must match exactly (e.g. defences use `system.defences.fort/ref/wil.[bonustype]`, NOT `fortitude`/`reflex`/`will` or `.value`; global attack/damage bonuses use `system.modifiers.attack/damage.[bonustype]`). Penalties and untyped bonuses use the `untyped` bonus type with ADD mode so they stack correctly per 4e rules. See [Active Effect Keys](#active-effect-keys-reference) below.
 
 4. **Target** (`src/scripts/target.js`) - Targeting system with range/radius
    - Factory methods: `Target.fromCharacter()`, `Target.fromCoordinates()`
@@ -783,6 +784,86 @@ class Character {
 4. **Keep static methods** - Required for macro accessibility
 5. **Update EffectLibrary** - Add reusable effects there, not inline
 6. **Write complete JSDoc** - Type all parameters, returns, and properties
+7. **Verify Active Effect keys** - Before writing any `changes` array, check the key, bonus type, and change mode against [`docs/reference/foundry-4e-effects.md`](docs/reference/foundry-4e-effects.md). Keys are case-sensitive; a wrong key fails silently (the bonus simply never applies).
+
+### Active Effect Keys Reference
+
+The authoritative source for Active Effect `changes` keys is [`docs/reference/foundry-4e-effects.md`](docs/reference/foundry-4e-effects.md). Read it whenever you build or review an effect. Key points to remember:
+
+- **Keys are case-sensitive** and must match the doc exactly. A wrong key produces no error — the modifier is silently ignored.
+- **Standard Foundry modifiers** (`system.defences.*`, `system.modifiers.*`, `system.skills.*`, etc.) apply to permanent actor data and respect change mode but do **not** understand 4e stacking on their own.
+- **Bonus typing**: most keys end in a `[bonustype]` segment (`feat`, `race`, `item`, `class`, `power`, `enhance`, `untyped`, plus `armour`/`shield` for defences). **All penalties must be `untyped`** so they always stack instead of being discarded.
+- **Custom 4e modifiers** (conditional attack/damage/save bonuses) use the `[Scope].[TargetValue].[Filter].[BonusType]` pattern (e.g. `power.damage.fire.untyped`) and only affect attack rolls, damage rolls, and effect saves.
+
+#### Change Modes (add / upgrade / override)
+
+Each entry in a `changes` array has a `mode` that decides **how** the value is combined with the attribute. Picking the wrong mode breaks 4e stacking. The numeric values mirror Foundry's `CONST.ACTIVE_EFFECT_MODES` and are exposed as `Effect4e.MODE`:
+
+| Mode | `Effect4e.MODE` (value) | What it does | When to use in 4e |
+|---|---|---|---|
+| **Add** | `ADD` (2) | Adds the value to the attribute | **Untyped** bonuses, and **every penalty** — untyped values always stack |
+| **Upgrade** | `UPGRADE` (4) | Keeps only the *higher* of current/new | **Typed** bonuses (`feat`, `item`, `power`, …) so only the highest of a given type applies |
+| **Override** | `OVERRIDE` (5) | Replaces the value entirely | Setting a value outright (e.g. base HP, forcing a stat to a fixed number) |
+| Downgrade | `DOWNGRADE` (3) | Keeps only the *lower* value | Rare — prefer the `floor`/`ceil`/`absolute` special keys for caps (see reference doc) |
+| Multiply / Custom | `MULTIPLY` (1) / `CUSTOM` (0) | Multiply / system-specific | Rare in 4e |
+
+**The core rule**: typed bonuses of the same type don't stack (use `UPGRADE`); untyped bonuses and penalties always stack (use `ADD`). Different bonus types live under different keys (`...fort.feat` vs `...fort.power`), so they stack naturally regardless of mode.
+
+**Priority** orders modifiers when several touch the same key. Omit it to use the per-mode default (Add=20, Upgrade=40, Override=50). Only set it for special ordering, e.g. a "reduce resistance by 5" (`ADD`) that must apply *after* `UPGRADE` effects → give it a priority between 40 and 50.
+
+#### How to place a mode on an effect
+
+Prefer the `Effect4e` helpers — they pick the correct mode from the bonus type and append the `[bonustype]` segment, so you never write a magic number or a malformed key:
+
+```javascript
+// Untyped bonus/penalty -> ADD. Pass the attribute WITHOUT the bonus-type segment.
+Effect4e.bonus('system.modifiers.attack', hitCount);   // -> { key:'system.modifiers.attack.untyped', mode:2, value:hitCount }
+Effect4e.bonus('system.defences.fort', -chaMod);        // penalty, stays untyped + ADD
+
+// Typed bonus -> UPGRADE automatically (highest-of-type wins)
+Effect4e.bonus('system.defences.ac', 2, 'feat');        // -> { key:'system.defences.ac.feat', mode:4, value:2 }
+
+// Replace a value outright -> OVERRIDE (pass the FULL key)
+Effect4e.override('system.attributes.hp.starting', 30);
+
+// Use these inside the effect's `changes` array:
+const effect = Effect4e.createEffect({
+    name: 'Some Buff',
+    description: '<p>...</p>',
+    icon: 'icons/...',
+    changes: [Effect4e.bonus('system.modifiers.attack', 2, 'power')]
+}, 'endOfUserTurn', caster);
+await caster.addEffect(effect);
+```
+
+Raw entries (`{ key, mode, value, priority }`) are still valid, but only drop to them for cases the helpers don't cover (e.g. the `floor`/`ceil`/`absolute` special keys, or custom 4e `[Scope].[Target]...` modifiers) — and use `Effect4e.MODE.*` instead of bare numbers.
+
+**Common correct keys** (see the doc for the full tables):
+
+| Intent | Correct key |
+|---|---|
+| Global attack bonus | `system.modifiers.attack.[bonustype]` |
+| Global damage bonus | `system.modifiers.damage.[bonustype]` |
+| Defences | `system.defences.ac.[bonustype]`, `system.defences.fort.[bonustype]`, `system.defences.ref.[bonustype]`, `system.defences.wil.[bonustype]` |
+| Saving throws | `system.details.saves.[bonustype]` |
+| Initiative | `system.attributes.init.[bonustype]` |
+
+❌ **Wrong** (invalid keys — silently ignored):
+```javascript
+// Bad: no such key; abbreviations and segments are wrong
+{ key: 'system.attributes.attack.bonus', mode: 2, value: n }   // not a real key
+{ key: 'system.defences.fortitude.value', mode: 2, value: -n } // 'fortitude'/'value' invalid
+```
+
+✅ **Correct** — prefer the `Effect4e` helpers, which build the key and pick the mode for you (see [Change Modes](#change-modes-add--upgrade--override) below):
+```javascript
+Effect4e.bonus('system.modifiers.attack', n);   // global untyped attack bonus (ADD)
+Effect4e.bonus('system.defences.fort', -n);      // untyped defence penalty (ADD, stacks)
+
+// Equivalent raw entries (only drop to these for cases the helpers don't cover):
+{ key: 'system.modifiers.attack.untyped', mode: Effect4e.MODE.ADD, value: n }
+{ key: 'system.defences.fort.untyped',    mode: Effect4e.MODE.ADD, value: -n }
+```
 
 ### Anti-Patterns to Avoid
 

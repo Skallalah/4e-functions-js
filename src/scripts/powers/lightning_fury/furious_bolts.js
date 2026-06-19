@@ -94,7 +94,11 @@ async function main(ref) {
             name: 'Furious Bolts - Attack Bonus',
             description: `<p>+${hitCount} bonus to your first attack roll on your next turn (hit ${hitCount} creature${hitCount > 1 ? 's' : ''}).</p>`,
             icon: 'icons/magic/lightning/bolt-strike-blue.webp',
-            changes: [{ key: 'system.attributes.attack.bonus', mode: 2, value: hitCount, priority: 20 }]
+            // Untyped global attack bonus -> ADD mode (always stacks). See
+            // docs/reference/foundry-4e-effects.md ("Global Modifiers", "Change Mode").
+            // NOTE: the system applies this to every attack until the effect expires, not just the
+            // first attack roll as the power states; there is no standard key for "first attack only".
+            changes: [Effect4e.bonus('system.modifiers.attack', hitCount)]
         }, 'endOfUserTurn', caster);
 
         await caster.addEffect(effect);

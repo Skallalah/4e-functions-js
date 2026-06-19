@@ -26,3 +26,6 @@ dist-ssr
 # Generated files
 /scripts/*
 /languages
+
+# Claude Code worktrees
+.worktrees/

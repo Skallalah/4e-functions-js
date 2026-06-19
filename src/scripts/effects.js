@@ -1,9 +1,91 @@
 class Effect4e {
     /**
+     * Foundry Active Effect change modes, by name. Use these instead of raw
+     * numbers in `changes` entries so the intent is readable.
+     *
+     * Mirrors `CONST.ACTIVE_EFFECT_MODES`. In 4e terms:
+     * - `ADD`: add the value to the attribute. Use for **untyped** bonuses and
+     *   for **all penalties** (untyped values always stack per 4e rules).
+     * - `UPGRADE`: keep only the higher of the current and new value. Use for
+     *   **typed** bonuses (feat/item/power/...) so only the highest of a given
+     *   type applies ("doesn't stack with another bonus of the same type").
+     * - `OVERRIDE`: replace the value entirely. Use to set a value outright
+     *   (e.g. base HP, or forcing a stat to a fixed number).
+     * - `DOWNGRADE`: keep only the lower value (rarely needed directly; prefer
+     *   the `ceil`/`floor`/`absolute` special keys for caps — see the reference).
+     * - `MULTIPLY` / `CUSTOM`: rarely used in 4e; included for completeness.
+     *
+     * @readonly
+     * @enum {number}
+     */
+    static MODE = {
+        CUSTOM: 0,
+        MULTIPLY: 1,
+        ADD: 2,
+        DOWNGRADE: 3,
+        UPGRADE: 4,
+        OVERRIDE: 5
+    };
+
+    /**
+     * Build a 4e-correct Active Effect change entry.
+     *
+     * The change mode is derived from the bonus type so stacking follows 4e
+     * rules automatically:
+     * - `untyped` (and therefore every penalty) -> `ADD`, because untyped
+     *   values always stack.
+     * - any typed bonus (`feat`, `item`, `power`, ...) -> `UPGRADE`, so only the
+     *   highest modifier of that type applies.
+     *
+     * The bonus type is appended to the attribute to form the final key, e.g.
+     * `bonus('system.defences.fort', -2)` -> key `system.defences.fort.untyped`.
+     *
+     * @param {string} attribute Attribute key WITHOUT the bonus-type segment,
+     *   e.g. `'system.defences.fort'` or `'system.modifiers.attack'`. See
+     *   docs/reference/foundry-4e-effects.md for valid keys.
+     * @param {number|string} value Bonus (positive) or penalty (negative) amount.
+     *   Accepts an `@variable` formula string.
+     * @param {'untyped'|'feat'|'race'|'item'|'class'|'power'|'enhance'|'armour'|'shield'} [bonusType='untyped']
+     *   The 4e bonus type. Penalties should stay `untyped`.
+     * @param {number} [priority] Optional explicit priority; omit to use the
+     *   default for the chosen mode (ADD=20, UPGRADE=40, OVERRIDE=50).
+     * @returns {{key: string, mode: number, value: (number|string), priority?: number}}
+     */
+    static bonus(attribute, value, bonusType = 'untyped', priority) {
+        const mode = bonusType === 'untyped' ? Effect4e.MODE.ADD : Effect4e.MODE.UPGRADE;
+        const change = { key: `${attribute}.${bonusType}`, mode, value };
+
+        if (priority !== undefined) change.priority = priority;
+
+        return change;
+    }
+
+    /**
+     * Build an `OVERRIDE` Active Effect change that replaces a value entirely.
+     *
+     * Use when a value must be set outright rather than added to (e.g. base HP,
+     * or forcing a stat to a fixed number). For "cap"/"floor" behaviour on a
+     * final value, prefer the `ceil`/`floor`/`absolute` special keys instead
+     * (see docs/reference/foundry-4e-effects.md).
+     *
+     * @param {string} key The full attribute key to override.
+     * @param {number|string} value The value to set.
+     * @param {number} [priority] Optional explicit priority (default 50).
+     * @returns {{key: string, mode: number, value: (number|string), priority?: number}}
+     */
+    static override(key, value, priority) {
+        const change = { key, mode: Effect4e.MODE.OVERRIDE, value };
+
+        if (priority !== undefined) change.priority = priority;
+
+        return change;
+    }
+
+    /**
      * Create an effect from data with the corresponding duration
-     * 
+     *
      * @param {Object} data The effect data, with name, description and icon
-     * @param {'endOfUserTurn'} durationType 
+     * @param {'endOfUserTurn'} durationType
      * @param {Character} origin
      */
     static createEffect(data, durationType, origin) {
