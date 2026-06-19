@@ -18,6 +18,8 @@ class Damage4e {
     _multiplier = 1;
     /** @type {boolean} */
     _bypass = false;
+    /** @type {boolean} */
+    _critical = false;
     /** @type {Roll|null} */
     _roll = null;
     /** @type {Array<[number, string]>|null} */
@@ -76,6 +78,19 @@ class Damage4e {
     }
 
     /**
+     * Roll critical damage instead of normal (item path only — uses the item's
+     * crit formula/parts). Must be set BEFORE roll(), since it changes the roll
+     * itself (unlike multiplier/bypass, which act on an already-rolled result).
+     *
+     * @param {boolean} [on=true]
+     * @returns {Damage4e} this
+     */
+    critical(on = true) {
+        this._critical = on;
+        return this;
+    }
+
+    /**
      * Internal clone that copies the resolved roll (never re-rolls).
      *
      * @param {Object} [overrides={}]
@@ -91,6 +106,7 @@ class Damage4e {
         d._caster = this._caster;
         d._multiplier = multiplier ?? this._multiplier;
         d._bypass = bypass ?? this._bypass;
+        d._critical = this._critical;
         d._roll = this._roll;
         d._parts = this._parts;
         return d;
@@ -100,13 +116,38 @@ class Damage4e {
      * Resolve the roll (idempotent). First call rolls and posts the native message;
      * later calls return the stored result.
      *
-     * @returns {Promise<Damage4e>}
+     * @param {Object} [options={}]
+     * @param {boolean} [options.fastForward=true] Skip the system's damage dialog
+     *   (item path only). Pass `false` to let the player pick crit/normal/miss.
+     * @returns {Promise<Damage4e>} this. On the item path, `this.roll` stays `null`
+     *   if the player cancelled the damage dialog (check via the `roll` getter).
      */
-    async roll() {
+    async roll({ fastForward = true } = {}) {
         if (this._roll) return this;
 
         if (this._item) {
-            const roll = await this._item.rollDamage();
+            // DamageRoll4e is our vendored copy of the system's roll pipeline; it is
+            // byte-identical to dnd4e 0.7.14 except it honours `critical` in fast-forward
+            // (the stock item.rollDamage cannot roll crit damage without the manual dialog).
+            // It returns the damageRoll() result, which is:
+            // - `false` if the (non-fastForward) damage dialog was cancelled, or
+            // - a Roll that is NOT yet evaluated — the system fire-and-forgets
+            //   roll.toMessage(), and it is toMessage() that evaluates the roll.
+            // So `await` alone does not guarantee an evaluated roll.
+            const roll = await DamageRoll4e.roll(this._item, { fastForward, critical: this._critical });
+
+            if (!(roll instanceof Roll)) return this; // dialog cancelled -> no roll
+
+            // Yield until toMessage()'s deferred evaluation lands. We must NOT call
+            // roll.evaluate() ourselves: toMessage() is already evaluating this same
+            // instance, and a second evaluate() would re-roll the dice.
+            for (let guard = 0; !roll._evaluated && guard < 1000; guard++) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            if (!roll._evaluated) {
+                console.warn('Damage4e.roll: damage roll did not finish evaluating in time.');
+            }
+
             this._roll = roll;
             this._parts = Damage4e._partsFromRoll(roll, 'physical');
             return this;

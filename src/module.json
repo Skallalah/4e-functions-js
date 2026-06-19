@@ -10,6 +10,7 @@
     "scripts/scene.js",
     "scripts/character.js",
     "scripts/effects.js",
+    "scripts/vendor/dnd4e-damage-roll.js",
     "scripts/damage.js",
     "scripts/target.js",
     "scripts/user.js",

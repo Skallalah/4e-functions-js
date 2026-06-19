@@ -153,15 +153,47 @@ class AttackResult extends Array {
 
     /** @private */
     async _runDamage(opts) {
-        const base = opts.damage ?? (opts.formula
-            ? await Damage4e.fromFormula(opts.formula, opts.type).by(this._caster).roll()
-            : await Damage4e.fromItem(this._item).roll());
+        // Pre-rolled or custom-formula damage: one shared roll for the whole group
+        // (crit reconstruction only applies to the item's own damage).
+        if (opts.damage || opts.formula) {
+            const base = opts.damage ?? await Damage4e.fromFormula(opts.formula, opts.type).by(this._caster).roll();
+            return this._applyDamage(this, base, opts);
+        }
+
+        // Item path: a critical hit is per-target, so roll the item's crit damage
+        // for the critical targets and normal damage for the rest. Each subgroup
+        // rolls once (RAW: one damage roll shared across same-outcome targets).
+        const crit = this.filter(o => Attack4e.isCritical(o));
+        const normal = this.filter(o => !Attack4e.isCritical(o));
+
+        if (normal.length) {
+            const base = await Damage4e.fromItem(this._item).roll({ fastForward: opts.fastForward });
+            await this._applyDamage(normal, base, opts);
+        }
+        if (crit.length) {
+            const base = await Damage4e.fromItem(this._item).critical().roll({ fastForward: opts.fastForward });
+            await this._applyDamage(crit, base, opts);
+        }
+    }
+
+    /**
+     * Apply a resolved Damage4e to a set of outcomes, honouring multiplier/true-damage.
+     * Skips silently if the roll was cancelled (no roll). Per-target failures are collected.
+     *
+     * @private
+     * @param {Iterable<AttackOutcome>} outcomes
+     * @param {Damage4e} base A Damage4e whose .roll() has been awaited
+     * @param {Object} opts applyDamage options (multiplier, trueDamage)
+     */
+    async _applyDamage(outcomes, base, opts) {
+        // Item-path damage dialogs can be cancelled, leaving no roll: skip application.
+        if (!base.roll) return;
 
         const dmg = (opts.trueDamage || opts.multiplier != null)
             ? base.clone({ bypass: opts.trueDamage, multiplier: opts.multiplier })
             : base;
 
-        for (const o of this) {
+        for (const o of outcomes) {
             try { await o.target.damage(dmg); }
             catch (err) { this.errors.push(err); console.error('applyDamage failed for', o.target?.name, err); }
         }

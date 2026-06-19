@@ -990,6 +990,8 @@ These provide the global classes available to all power scripts.
     "scripts/scene.js",
     "scripts/character.js",
     "scripts/effects.js",
+    "scripts/vendor/dnd4e-damage-roll.js",
+    "scripts/damage.js",
     "scripts/target.js",
     "scripts/user.js",
     "scripts/attack.js",
@@ -998,6 +1000,26 @@ These provide the global classes available to all power scripts.
   ]
 }
 ```
+
+### Vendored System Code (`src/scripts/vendor/`)
+
+`scripts/vendor/dnd4e-damage-roll.js` is a **verbatim copy** of the dnd4e system's
+damage-roll pipeline (`item.rollDamage` body + `damageRoll` and its helpers),
+pinned to **dnd4e 0.7.14**. It exists for one reason: the stock `item.rollDamage()`
+cannot roll *critical* damage when fast-forwarded (its `critical` flag is never
+wired through), so we copy the exact code and add the single missing line that
+honours a crit. `Damage4e.critical()` routes the item path through it.
+
+Rules for vendored code:
+- The function bodies MUST stay byte-identical to the source, **modulo** the
+  documented crit transforms (`this`→`item`, a `critical` parameter, the marked
+  `[VENDOR FIX]` lines). Do not "improve" or reformat it.
+- `src/scripts/vendor/verify-vendor.py` proves this: it re-downloads the pristine
+  0.7.14 source from GitHub and diffs. Run `python3 src/scripts/vendor/verify-vendor.py`
+  (exit 0 = verbatim). Re-run it whenever the vendored file changes.
+- It is **version-pinned**. If the dnd4e system is upgraded (e.g. to 0.8.x / Foundry
+  v14, where the data model diverges), the copy must be re-vendored from the new tag
+  and the verifier's `TAG` updated.
 
 ## Publishing
 
