@@ -265,6 +265,36 @@ class DamageCard4e {
             flags: { [DAMAGE_CARD_SCOPE]: { [DAMAGE_CARD_FLAG]: flag } }
         });
     }
+
+    /**
+     * Apply every target's selected outcome via the permission-elevated
+     * Helper4e.damage chain, then lock the card. Per-target failures are logged,
+     * not thrown, so one bad target does not abort the rest. Re-checks `resolved`
+     * to guard against a double click / race.
+     *
+     * @param {ChatMessage} message
+     * @returns {Promise<void>}
+     */
+    static async _onApply(message) {
+        const flag = foundry.utils.deepClone(message.getFlag(DAMAGE_CARD_SCOPE, DAMAGE_CARD_FLAG));
+        if (!flag || flag.resolved) return;
+
+        for (const target of flag.targets) {
+            const outcome = DamageCard4e._outcome(flag, target);
+            if (!outcome) continue; // miss with no half-damage, or crit without a crit roll
+            try {
+                await Helper4e.damage(target.characterId, outcome.parts, outcome.multiplier, outcome.bypass);
+            } catch (err) {
+                console.error('DamageCard4e: apply failed for', target.name, err);
+            }
+        }
+
+        flag.resolved = true;
+        await message.update({
+            content: DamageCard4e._html(flag),
+            flags: { [DAMAGE_CARD_SCOPE]: { [DAMAGE_CARD_FLAG]: flag } }
+        });
+    }
 }
 
 // dnd4e targets Foundry v13: renderChatMessage still fires (deprecated, removed
