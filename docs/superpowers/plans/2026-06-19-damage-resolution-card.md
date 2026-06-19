@@ -13,7 +13,7 @@
 - **Foundry v13 / dnd4e 0.7.14 only.** Reuse the system's existing card classes; do not invent CSS class names (a theme overlay restyles the dnd4e classes afterwards). Untyped/custom styling goes **inline**. No new `style.css`, no `module.json` `styles` entry.
 - **All utility class methods MUST be static** (macro permission workaround).
 - **Never bypass abstractions** — apply damage through `Helper4e.damage(...)`; read defences/images through `Character`, not raw `system`.
-- **Comments, JSDoc, and UI-facing English** stay in English. (French is fine only for user-facing copy that the project already writes in French, e.g. the "Appliquer tous les dégâts" button — match existing power copy.)
+- **All UI text, comments, and JSDoc stay in English** — Foundry VTT runs in English here. No French in user-facing strings.
 - **Complete JSDoc** on every method/param/return.
 - Reuse the dnd4e chat-card structure: container `dnd4e chat-card item-card`, `card-header flexrow`, `card-content`, `card-footer`, `card-buttons`, and for target rows `dice-roll`/`dice-result`/`flavor-text target`/`mod-vs-def`/`attack-mod`/`vs-def`.
 - The system binds a global `click` listener to `.card-buttons button` (`Item4e._onChatCardAction`). Every interactive control in this card MUST call `event.stopPropagation()` in its own listener so that handler never runs (it would disable the button and fail an item/actor lookup).
@@ -255,7 +255,7 @@ class DamageCard4e {
         const totalBlock = (label, data, key) => `
             <div class="dice-result" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                 <span class="dice-total">${label}: ${data.total} ${flag.damageType}</span>
-                <a data-detail="${key}" style="cursor:pointer;font-size:0.85em;opacity:0.8">▸ détail</a>
+                <a data-detail="${key}" style="cursor:pointer;font-size:0.85em;opacity:0.8">▸ details</a>
                 <span data-detail-for="${key}" style="display:none;font-size:0.85em;opacity:0.8">(${detail(data.parts)})</span>
             </div>`;
 
@@ -292,8 +292,8 @@ class DamageCard4e {
         }).join('');
 
         const footer = flag.resolved
-            ? `<div style="text-align:center;font-weight:bold;opacity:0.8">✔ Dégâts appliqués</div>`
-            : `<div class="card-buttons"><button class="dc-apply">⚔ Appliquer tous les dégâts</button></div>`;
+            ? `<div style="text-align:center;font-weight:bold;opacity:0.8">✔ Damage applied</div>`
+            : `<div class="card-buttons"><button class="dc-apply">⚔ Apply all damage</button></div>`;
 
         return `
             <div class="dnd4e chat-card item-card damage-card">
@@ -343,7 +343,7 @@ const flag = {
 ChatMessage.create({ content: DamageCard4e._html(flag) });
 ```
 
-Expected: a chat card styled like a dnd4e item card, two totals (Normal 14 / Crit 22) each with a "▸ détail", and two target rows with token thumbnail, name, "(18 vs Ref 14)", and four buttons. The selected button has a gold outline; MISS reads "MISS→7". Buttons do nothing yet (listeners come in Task 3). Clicking them must NOT throw or grey them out (verify no console error from `_onChatCardAction`).
+Expected: a chat card styled like a dnd4e item card, two totals (Normal 14 / Crit 22) each with a "▸ details", and two target rows with token thumbnail, name, "(18 vs Ref 14)", and four buttons. The selected button has a gold outline; MISS reads "MISS→7". Buttons do nothing yet (listeners come in Task 3). Clicking them must NOT throw or grey them out (verify no console error from `_onChatCardAction`).
 
 > Note: if a click DOES disable a button / logs an item lookup error, that is the system handler firing — it will be neutralized in Task 3. Acceptable at this step.
 
@@ -463,7 +463,7 @@ Expected: no output, exit 0.
 
 Reload Foundry. Re-post the test card from Task 2 Step 4. Then:
 
-- Click "▸ détail" on a total → the breakdown `(10 lightning + 4 physical)` shows/hides.
+- Click "▸ details" on a total → the breakdown `(10 lightning + 4 physical)` shows/hides.
 - Click HIT then CRIT then TRUE on a target → the gold outline follows the click; the originally-rolled outcome keeps a dashed outline when it is no longer selected.
 - Confirm the clicked buttons are NOT disabled and no `_onChatCardAction` error appears in the console (stopPropagation working).
 - Reload the page (F5) → the last selections persist (read back from the flag).
@@ -549,9 +549,9 @@ ChatMessage.create({ content: DamageCard4e._html(flag), flags: { '4e-functions-j
 
 > Requires the world macro `ApplyDamage` (Helper4e.macroApplyDamage) to exist, as for all damage in this module.
 
-Click "⚔ Appliquer tous les dégâts". Expected:
+Click "⚔ Apply all damage". Expected:
 - Target 1 (crit) takes 14 fire; target 2 (miss, halfOnMiss) takes 4 fire (half of 8, floored).
-- The card switches to the locked "✔ Dégâts appliqués" state; toggles are disabled.
+- The card switches to the locked "✔ Damage applied" state; toggles are disabled.
 - Clicking anything again does nothing (no second application).
 - Set one target's `selected` to `'miss'` with `halfOnMiss:false` in a fresh card → that target is skipped (0 damage).
 
@@ -660,7 +660,7 @@ await result.applyDamage({ resolutionCard: true, halfOnMiss: true }).run();
 
 Expected:
 - The attack card posts as usual, then a resolution card lists each target with its real "vs Def", toggles pre-selected to the rolled outcome (crit/hit/miss).
-- Damage is NOT applied until the GM clicks "⚔ Appliquer tous les dégâts".
+- Damage is NOT applied until the GM clicks "⚔ Apply all damage".
 - Override a hit→crit, then apply → each target takes the right amount; card locks.
 - Repeat with a power whose `applyDamage({ resolutionCard: true, formula: '2d6', type: 'fire' })` → CRIT toggles are disabled (formula path).
 
