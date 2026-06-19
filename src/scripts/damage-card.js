@@ -195,4 +195,78 @@ class DamageCard4e {
                 <footer class="card-footer">${footer}</footer>
             </div>`;
     }
+
+    /**
+     * Resolve the root card element from a renderChatMessage payload, which is a
+     * jQuery object in v13 (deprecated hook) or an element. Returns null when the
+     * message is not one of our cards.
+     *
+     * @param {ChatMessage} message
+     * @param {JQuery|HTMLElement} html
+     * @returns {HTMLElement|null}
+     */
+    static _root(message, html) {
+        if (!message.getFlag(DAMAGE_CARD_SCOPE, DAMAGE_CARD_FLAG)) return null;
+        const el = html?.jquery ? html[0] : html;
+        return el?.querySelector?.('.damage-card') ?? null;
+    }
+
+    /**
+     * Wire interactions on a rendered card. The detail expanders work for
+     * everyone; toggles and the apply button mutate state and are GM-only.
+     * Every interactive control stops propagation so the system's
+     * `.card-buttons button` handler never runs on it.
+     *
+     * @param {ChatMessage} message
+     * @param {JQuery|HTMLElement} html
+     */
+    static activateListeners(message, html) {
+        const root = DamageCard4e._root(message, html);
+        if (!root) return;
+
+        // Detail expanders: pure UI, available to everyone.
+        root.querySelectorAll('[data-detail]').forEach(el => {
+            el.addEventListener('click', event => {
+                event.stopPropagation();
+                const block = root.querySelector(`[data-detail-for="${el.dataset.detail}"]`);
+                if (block) block.style.display = block.style.display === 'none' ? '' : 'none';
+            });
+        });
+
+        const flag = message.getFlag(DAMAGE_CARD_SCOPE, DAMAGE_CARD_FLAG);
+
+        // Always swallow clicks on our interactive controls so the system's
+        // global card-buttons handler cannot disable them or error out.
+        root.querySelectorAll('[data-key], .dc-apply').forEach(btn => {
+            btn.addEventListener('click', event => {
+                event.stopPropagation();
+                if (!game.user.isGM || flag.resolved || btn.disabled) return;
+                if (btn.dataset.key) DamageCard4e._onToggle(message, Number(btn.dataset.idx), btn.dataset.key);
+                else DamageCard4e._onApply(message);
+            });
+        });
+    }
+
+    /**
+     * Apply a new selection for one target and re-render from the flag.
+     *
+     * @param {ChatMessage} message
+     * @param {number} idx Target index
+     * @param {'crit'|'hit'|'miss'|'true'} key
+     * @returns {Promise<void>}
+     */
+    static async _onToggle(message, idx, key) {
+        const flag = foundry.utils.deepClone(message.getFlag(DAMAGE_CARD_SCOPE, DAMAGE_CARD_FLAG));
+        if (!flag || flag.resolved) return;
+        if (key === 'crit' && !flag.crit) return; // crit unavailable on the formula path
+        flag.targets[idx].selected = key;
+        await message.update({
+            content: DamageCard4e._html(flag),
+            flags: { [DAMAGE_CARD_SCOPE]: { [DAMAGE_CARD_FLAG]: flag } }
+        });
+    }
 }
+
+// dnd4e targets Foundry v13: renderChatMessage still fires (deprecated, removed
+// in v15). It passes (message, html, data) with html as a jQuery object.
+Hooks.on('renderChatMessage', (message, html) => DamageCard4e.activateListeners(message, html));
