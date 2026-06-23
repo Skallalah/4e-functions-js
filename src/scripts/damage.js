@@ -181,15 +181,26 @@ class Damage4e {
         const actor = this._caster.actor;
         const rollData = actor.getRollData();
         const Roll4e = CONFIG.Dice.rolls[0];
-        const options = { bonuses: foundry.utils.deepClone(Roll4e.DEFAULT_OPTIONS.bonuses) };
-        // Synthetic power data so type riders (power.damage.<type>.*) fire for this type.
-        const powerData = { name: `${this._type} damage`, damageType: { [this._type]: true } };
+
+        // Synthetic power so global damage modifiers + type riders (power.damage.<type>.*)
+        // fire for this damage. applyEffects reads `powerData.system.damageType`, so the
+        // damage type must live under `.system`.
+        const powerData = { name: `${this._type} damage`, system: { damageType: { [this._type]: true } } };
+
+        // applyEffects mutates these in place, mirroring the dnd4e damage pipeline
+        // (see vendor/dnd4e-damage-roll.js): `effectParts` collects `@key` tokens whose
+        // numeric values are written into rollData; `extra` collects ready-to-roll damage
+        // fragments (e.g. '1d6[fire]'). Signature in dnd4e 0.7.14:
+        //   applyEffects(arrayOfParts, rollData, actorData, powerData, weaponData, effectType, extraDamage)
+        const effectParts = [];
         const extra = [];
+        await game.helper.applyEffects([effectParts], rollData, actor, powerData, null, 'damage', extra);
 
-        await game.helper.applyEffects(rollData, actor, powerData, null, 'damage', extra, false, options);
+        let formula = `(${this._formula})[${this._type}]`;
+        for (const part of effectParts) formula += ` + ${rollData[part.substring(1)]}`;
+        for (const part of extra) formula += ` + ${part}`;
 
-        const formula = [`(${this._formula})[${this._type}]`, ...extra].join(' + ');
-        const roll = await new Roll4e(formula, rollData, options).evaluate();
+        const roll = await new Roll4e(formula, rollData).evaluate();
         // Await the card so damage application is gated on it being posted (consistent
         // with the item path). toMessage() returns the created ChatMessage.
         this._message = await roll.toMessage({
