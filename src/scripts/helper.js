@@ -46,12 +46,19 @@ class Helper4e {
 
         if (!actor) return undefined;
 
-        if (bypass) {
-            const total = parts.reduce((sum, [value]) => sum + value, 0);
-            await actor.applyDamage(total, multiplier);
-        } else {
-            await actor.calcDamage(parts, multiplier);
-        }
+        // Resolve the damage total, then apply it ourselves with an AWAITED update.
+        // We deliberately do NOT call the system's actor.calcDamage(): it fires
+        // applyDamage() without awaiting (and without returning its promise), and that
+        // un-awaited update does not reliably land when invoked from this delegated-macro
+        // context — the HP simply never change. Instead we mirror what calcDamage does
+        // internally: calcDamageInner() yields the resistance-adjusted value (multiplier
+        // is NOT applied here — only applyDamage multiplies), then we await applyDamage().
+        // The bypass path skips resistances by summing the raw parts.
+        const total = bypass
+            ? parts.reduce((sum, [value]) => sum + value, 0)
+            : await actor.calcDamageInner(parts, multiplier);
+
+        await actor.applyDamage(total, multiplier);
 
         return true;
     }

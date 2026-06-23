@@ -22,8 +22,18 @@ class Damage4e {
     _critical = false;
     /** @type {Roll|null} */
     _roll = null;
+    /** @type {ChatMessage|null} */
+    _message = null;
     /** @type {Array<[number, string]>|null} */
     _parts = null;
+
+    /**
+     * Breathing room (ms) after the damage card is posted before roll() resolves, so
+     * damage/VFX don't land instantly on top of the card. Override per call via
+     * roll({ settleMs }).
+     * @type {number}
+     */
+    static CARD_SETTLE_MS = 5000;
 
     /**
      * @param {Item} item Item whose damage configuration drives the roll
@@ -108,6 +118,7 @@ class Damage4e {
         d._bypass = bypass ?? this._bypass;
         d._critical = this._critical;
         d._roll = this._roll;
+        d._message = this._message;
         d._parts = this._parts;
         return d;
     }
@@ -119,37 +130,49 @@ class Damage4e {
      * @param {Object} [options={}]
      * @param {boolean} [options.fastForward=true] Skip the system's damage dialog
      *   (item path only). Pass `false` to let the player pick crit/normal/miss.
-     * @returns {Promise<Damage4e>} this. On the item path, `this.roll` stays `null`
-     *   if the player cancelled the damage dialog (check via the `roll` getter).
+     * @param {number} [options.settleMs=Damage4e.CARD_SETTLE_MS] Pause after the card is
+     *   posted before resolving, so damage/VFX don't land instantly on top of it. Pass 0
+     *   to disable.
+     * @returns {Promise<Damage4e>} this. On the item path, `this._roll` stays `null`
+     *   if the player cancelled the damage dialog (check via the `result` getter).
+     *   Resolves once the damage chat card has been posted (plus the settle delay), so
+     *   callers can apply damage / play impact VFX after the card is on screen.
      */
-    async roll({ fastForward = true } = {}) {
+    async roll({ fastForward = true, settleMs = Damage4e.CARD_SETTLE_MS } = {}) {
         if (this._roll) return this;
 
         if (this._item) {
-            // DamageRoll4e is our vendored copy of the system's roll pipeline; it is
-            // byte-identical to dnd4e 0.7.14 except it honours `critical` in fast-forward
-            // (the stock item.rollDamage cannot roll crit damage without the manual dialog).
-            // It returns the damageRoll() result, which is:
-            // - `false` if the (non-fastForward) damage dialog was cancelled, or
-            // - a Roll that is NOT yet evaluated — the system fire-and-forgets
-            //   roll.toMessage(), and it is toMessage() that evaluates the roll.
-            // So `await` alone does not guarantee an evaluated roll.
-            const roll = await DamageRoll4e.roll(this._item, { fastForward, critical: this._critical });
+            // DamageRoll4e is our vendored copy of the system's roll pipeline (crit-aware).
+            // The system fire-and-forgets roll.toMessage(), so we cannot await that promise
+            // directly. _rollItemAndAwaitCard() instead waits for the resulting chat card via
+            // a one-shot createChatMessage hook. Because toMessage() awaits evaluate() BEFORE
+            // creating the message, the card's arrival also guarantees the roll has finished
+            // evaluating — so reading the total right after is safe, and damage application is
+            // gated on the card being visible (mirroring the fromFormula path, which awaits
+            // toMessage() too).
+            const { roll, message } = await Damage4e._rollItemAndAwaitCard(
+                this._item, { fastForward, critical: this._critical }
+            );
 
             if (!(roll instanceof Roll)) return this; // dialog cancelled -> no roll
 
-            // Yield until toMessage()'s deferred evaluation lands. We must NOT call
-            // roll.evaluate() ourselves: toMessage() is already evaluating this same
-            // instance, and a second evaluate() would re-roll the dice.
-            for (let guard = 0; !roll._evaluated && guard < 1000; guard++) {
+            // Safety net for the rare case the card was never observed (hook timeout): make
+            // sure evaluation actually completed before we read the total. We poll `_total`,
+            // NOT `_evaluated` — Foundry's Roll.evaluate() flips `_evaluated` to true
+            // SYNCHRONOUSLY at the start but computes `_total` asynchronously, so `_evaluated`
+            // would return instantly with the dice unrolled (total read as 0). On the normal
+            // path the card already implies evaluation, so this loop exits immediately.
+            for (let guard = 0; roll._total == null && guard < 1000; guard++) {
                 await new Promise(resolve => setTimeout(resolve, 0));
             }
-            if (!roll._evaluated) {
+            if (roll._total == null) {
                 console.warn('Damage4e.roll: damage roll did not finish evaluating in time.');
             }
 
             this._roll = roll;
+            this._message = message ?? null;
             this._parts = Damage4e._partsFromRoll(roll, 'physical');
+            await this._settle(settleMs);
             return this;
         }
 
@@ -167,11 +190,81 @@ class Damage4e {
 
         const formula = [`(${this._formula})[${this._type}]`, ...extra].join(' + ');
         const roll = await new Roll4e(formula, rollData, options).evaluate();
-        await roll.toMessage({ speaker: ChatMessage.getSpeaker({ actor }), flavor: `${this._type} damage` });
+        // Await the card so damage application is gated on it being posted (consistent
+        // with the item path). toMessage() returns the created ChatMessage.
+        this._message = await roll.toMessage({
+            speaker: ChatMessage.getSpeaker({ actor }),
+            flavor: `${this._type} damage`,
+        });
 
         this._roll = roll;
         this._parts = Damage4e._partsFromRoll(roll, this._type);
+        await this._settle(settleMs);
         return this;
+    }
+
+    /**
+     * Breathing-room pause after the card is posted. No-op when no card was actually
+     * shown (cancelled/missed) or when the delay is non-positive.
+     *
+     * @private
+     * @param {number} ms
+     * @returns {Promise<void>}
+     */
+    async _settle(ms) {
+        if (this._message && ms > 0) {
+            await new Promise(resolve => setTimeout(resolve, ms));
+        }
+    }
+
+    /**
+     * Roll an item's damage through the vendored pipeline and resolve once the chat
+     * card the system posts has been created.
+     *
+     * The vendored pipeline fire-and-forgets `roll.toMessage()`, so its promise (which
+     * resolves to the ChatMessage) is unreachable. We instead listen for the resulting
+     * message with a one-shot `createChatMessage` hook, matching "our" message by the
+     * evaluated roll's formula + total. Because `toMessage()` awaits `evaluate()` before
+     * `ChatMessage.create()`, observing the message also guarantees the roll has finished
+     * evaluating.
+     *
+     * Matching is unambiguous in practice: `AttackResult.run()` applies damage
+     * sequentially, so only one item roll is ever in flight. A timeout guarantees we
+     * never deadlock if the message is somehow never observed (caller then falls back to
+     * polling the roll's total).
+     *
+     * @param {Item} item
+     * @param {Object} opts
+     * @param {boolean} opts.fastForward
+     * @param {boolean} opts.critical
+     * @param {number} [opts.timeout=3000] ms to wait for the card before giving up
+     * @returns {Promise<{roll: Roll|null, message: ChatMessage|null}>}
+     */
+    static async _rollItemAndAwaitCard(item, { fastForward, critical, timeout = 3000 }) {
+        let roll = null;
+        let resolveCard;
+        const card = new Promise(resolve => { resolveCard = resolve; });
+
+        const hookId = Hooks.on('createChatMessage', message => {
+            if (!roll) return;
+            const mine = message.rolls?.some(
+                r => r._evaluated && r.total === roll.total && r.formula === roll.formula
+            );
+            if (mine) resolveCard(message);
+        });
+
+        try {
+            roll = await DamageRoll4e.roll(item, { fastForward, critical });
+            if (!(roll instanceof Roll)) return { roll: null, message: null }; // dialog cancelled
+
+            const message = await Promise.race([
+                card,
+                new Promise(resolve => setTimeout(() => resolve(null), timeout)),
+            ]);
+            return { roll, message };
+        } finally {
+            Hooks.off('createChatMessage', hookId);
+        }
     }
 
     /**
@@ -207,7 +300,9 @@ class Damage4e {
     /** @returns {string|null} */
     get type() { return this._type; }
     /** @returns {Roll|null} */
-    get roll() { return this._roll; }
+    get result() { return this._roll; }
+    /** @returns {ChatMessage|null} The damage chat card, once posted (null if missed/cancelled) */
+    get message() { return this._message; }
     /** @returns {number} */
     get multiplier() { return this._multiplier; }
     /** @returns {boolean} */

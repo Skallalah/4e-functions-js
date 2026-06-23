@@ -187,7 +187,7 @@ class AttackResult extends Array {
      */
     async _applyDamage(outcomes, base, opts) {
         // Item-path damage dialogs can be cancelled, leaving no roll: skip application.
-        if (!base.roll) return;
+        if (!base.result) return;
 
         const dmg = (opts.trueDamage || opts.multiplier != null)
             ? base.clone({ bypass: opts.trueDamage, multiplier: opts.multiplier })
