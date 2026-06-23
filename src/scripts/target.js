@@ -409,9 +409,11 @@ class Target {
                 panel.update(selected.size, count);
             }
         } finally {
-            // Cleanup (always).
+            // Cleanup (always). animate:false skips ApplicationV2's "minimizing"
+            // collapse (maxHeight->0 + transform reset), which otherwise makes the
+            // panel visibly shrink/shift when selection completes.
             VFX4e.clearRangeHighlight();
-            await panel.close();
+            await panel.close({ animate: false });
         }
 
         if (cancelled) return [];
