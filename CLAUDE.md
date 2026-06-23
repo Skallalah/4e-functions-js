@@ -115,7 +115,7 @@ FoundryVTT prevents players from modifying other players' character sheets. This
      - `.range(squares)` / `.radius(squares)` - low-level primitives (escape hatch)
    - **Terminal verbs** (interaction + visibility — the name makes visibility explicit):
      - `.get()` - no UI, instant computation → `Character[]`
-     - `.pick({ count })` - interactive creature selection (native targeting + markers + X/N counter), **private** → `Character[]`
+     - `.pick({ count })` - interactive creature selection (Portal crosshair + X/N counter), **private** → `Character[]`
      - `.place()` - places a shared Scene Region (visible to all), returns covered `Character[]`
      - `.pickPoint(icon)` - selects an empty/occupied coordinate, validated by range, **private** → `Target | null`
    - Always returns `Character` instances, never raw token/actor

@@ -344,84 +344,78 @@ class Target {
     }
 
     /**
-     * Targeted mode: interactive selection of 1..count creatures using Foundry's
-     * native targeting (free toggle/deselection), with range highlight, a marker
-     * placed on each target and an X/N counter. Live validation of range and type.
-     * Auto-resolves once `count` is reached.
+     * Targeted mode: interactively pick 1..count creatures with the Portal
+     * crosshair (left-click a square to select the creature on it; right-click or
+     * Escape cancels the active crosshair) — the same interface as pickPoint(), so
+     * targets and squares are selected the same way. Each pick is validated for
+     * range and type; an X/N counter panel tracks progress. Resolves once `count`
+     * targets are chosen, or early via the panel's Confirm button (count > 1).
      *
      * @param {Object} [opts]
-     * @param {number} [opts.count=1] Maximum number of targets
-     * @param {string} [opts.icon] (reserved) icon — unused by native targeting
+     * @param {number} [opts.count=1] Number of targets to select
+     * @param {string} [opts.icon] Crosshair icon (e.g. the power's img)
      * @returns {Promise<Character[]>} Selected targets, or [] if cancelled
      */
     async pick({ count = 1, icon } = {}) {
         if (this._origins.length !== 1) throw Error('cannot pick from more than one origin');
         const origin = this._origins[0];
 
-        // Start from a clean selection.
-        for (const t of Array.from(game.user.targets)) t.setTarget(false, { releaseOthers: false });
-
         VFX4e.rangeHighlight(origin, this._range);
         const panel = new TargetSelectionPanel({ count });
         await panel.render({ force: true });
+        panel.update(0, count);
 
-        /** @type {Map<string, Token>} */
+        /** @type {Map<string, TokenDocument>} */
         const selected = new Map();
 
-        let resolveFn;
-        const done = new Promise(resolve => { resolveFn = resolve; });
+        // Panel buttons flip flags honored at each loop boundary (between picks).
+        // Cancelling the active crosshair itself is done with Portal's right-click/Escape.
+        let cancelled = false;
+        let confirmed = false;
+        panel.onValidate(() => { confirmed = true; });
+        panel.onCancel(() => { cancelled = true; });
 
-        /**
-         * @param {User} user
-         * @param {Token} token
-         * @param {boolean} targeted
-         */
-        const onTarget = (user, token, targeted) => {
-            if (user.id !== game.user.id) return;
+        const portal = new Portal().color('#ffffff').origin(origin);
+        if (icon) portal.texture(icon);
 
-            if (targeted) {
-                const doc = token.document ?? token;
-                if (!Scene4e.isWithin(origin, doc, this._range)) {
-                    token.setTarget(false, { releaseOthers: false });
+        try {
+            while (selected.size < count && !confirmed && !cancelled) {
+                const point = await portal.pick();
+
+                if (point === false) { cancelled = true; break; } // right-click / Escape
+                if (cancelled) break;
+                if (confirmed) break;
+
+                if (!Scene4e.isWithin(origin, point, this._range)) {
                     ui.notifications.warn(`Please target a creature within ${this._range} squares.`);
-                    return;
+                    continue;
+                }
+
+                const token = Scene4e.getTokenAtLocation(point.x, point.y);
+                if (!token) {
+                    ui.notifications.warn('Please target a creature.');
+                    continue;
                 }
                 if (!this._matchesType(token)) {
-                    token.setTarget(false, { releaseOthers: false });
                     ui.notifications.warn(`That target is not a valid ${this._type.slice(0, -1)}.`);
-                    return;
+                    continue;
                 }
-                if (!selected.has(token.id) && selected.size >= count) {
-                    token.setTarget(false, { releaseOthers: false });
-                    ui.notifications.warn(`You can only select ${count} target${count > 1 ? 's' : ''}.`);
-                    return;
+                if (selected.has(token.id)) {
+                    ui.notifications.warn(`${token.name} is already selected. Choose another.`);
+                    continue;
                 }
+
                 selected.set(token.id, token);
-                VFX4e.targetMarker(token);
-            } else {
-                selected.delete(token.id);
-                VFX4e.clearTargetMarker(token);
+                panel.update(selected.size, count);
             }
+        } finally {
+            // Cleanup (always).
+            VFX4e.clearRangeHighlight();
+            await panel.close();
+        }
 
-            panel.update(selected.size, count);
-            if (selected.size === count) resolveFn('validate');
-        };
-
-        Hooks.on('targetToken', onTarget);
-        panel.onValidate(() => resolveFn('validate'));
-        panel.onCancel(() => resolveFn('cancel'));
-
-        const outcome = await done;
-
-        // Cleanup (always).
-        Hooks.off('targetToken', onTarget);
-        VFX4e.clearRangeHighlight();
-        for (const token of selected.values()) VFX4e.clearTargetMarker(token);
-        for (const t of Array.from(game.user.targets)) t.setTarget(false, { releaseOthers: false });
-        await panel.close();
-
-        if (outcome === 'cancel') return [];
-        return [...selected.values()].map(token => Character.fromToken(token.document ?? token));
+        if (cancelled) return [];
+        return [...selected.values()].map(token => Character.fromToken(token));
     }
 
     /**
