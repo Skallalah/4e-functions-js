@@ -54,12 +54,12 @@ async function main(ref) {
 
     while (chaining) {
         const candidates = Target.fromCharacter(origin)
-            .range(10).type('enemies').get()
+            .radius(10).type('allies').get()
             .filter(t => !attacked.has(t.id));
         if (candidates.length === 0) break;
 
         const sel = await Target.fromCharacter(origin)
-            .range(10).type('enemies')
+            .range(10).type('allies')
             .selectCharacters({ count: 1, icon: item.img });
         if (!sel.length) break;
 
