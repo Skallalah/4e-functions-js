@@ -26,6 +26,8 @@ class Damage4e {
     _message = null;
     /** @type {Array<[number, string]>|null} */
     _parts = null;
+    /** @type {string|null} Chat-card flavor override (formula path); null -> `<type> damage` */
+    _flavor = null;
 
     /**
      * Breathing room (ms) after the damage card is posted before roll() resolves, so
@@ -66,6 +68,30 @@ class Damage4e {
     by(character) {
         this._caster = character;
         return this;
+    }
+
+    /**
+     * Override the chat-card flavor for the formula path. Defaults to
+     * `<type> damage`. Pass `null` to keep the default.
+     *
+     * @param {string|null} text
+     * @returns {Damage4e} this
+     */
+    flavor(text) {
+        this._flavor = text ?? null;
+        return this;
+    }
+
+    /**
+     * Build the dnd4e native damage-card flavor for an item — matching the
+     * system's own item damage card: `<name> - Damage Roll (<types>)`.
+     *
+     * @param {Item} item
+     * @returns {string}
+     */
+    static itemFlavor(item) {
+        const title = `${item.name} - ${game.i18n.localize('DND4E.DamageRoll')}`;
+        return item.labels?.damageTypes?.length ? `${title} (${item.labels.damageTypes})` : title;
     }
 
     /**
@@ -120,6 +146,7 @@ class Damage4e {
         d._roll = this._roll;
         d._message = this._message;
         d._parts = this._parts;
+        d._flavor = this._flavor;
         return d;
     }
 
@@ -180,7 +207,13 @@ class Damage4e {
 
         const actor = this._caster.actor;
         const rollData = actor.getRollData();
-        const Roll4e = CONFIG.Dice.rolls[0];
+
+        // Roll through the system's own damage-roll class (NOT the bare Roll4e) so the
+        // chat card renders via dnd4e's `roll-template-single.html` — inheriting the full
+        // damage-card styling (flavor, expression display, Damage/Half-Damage buttons)
+        // instead of Foundry's plain roll template. Resolved from the live system the same
+        // way the vendored pipeline does.
+        const RollWithOriginalExpression = CONFIG.Dice.rolls.find(r => r.name === 'RollWithOriginalExpression');
 
         // Synthetic power so global damage modifiers + type riders (power.damage.<type>.*)
         // fire for this damage. applyEffects reads `powerData.system.damageType`, so the
@@ -196,16 +229,26 @@ class Damage4e {
         const extra = [];
         await game.helper.applyEffects([effectParts], rollData, actor, powerData, null, 'damage', extra);
 
-        let formula = `(${this._formula})[${this._type}]`;
-        for (const part of effectParts) formula += ` + ${rollData[part.substring(1)]}`;
-        for (const part of extra) formula += ` + ${part}`;
+        // Build the roll as parts (mirrors the system pipeline): the typed base formula
+        // first, then untyped effect contributions and extra typed fragments.
+        const parts = [`(${this._formula})[${this._type}]`];
+        for (const part of effectParts) parts.push(`${rollData[part.substring(1)]}`);
+        for (const part of extra) parts.push(part);
 
-        const roll = await new Roll4e(formula, rollData).evaluate();
+        // hitTypeDamage drives the Damage buttons in the template; hitType keys the
+        // (here trivial) damage divisor read while rendering.
+        const roll = RollWithOriginalExpression.createRoll(parts, [], rollData, {
+            hitTypeDamage: true,
+            hitType: 'normal',
+            divisors: { normal: { value: 1, reason: [] } },
+        });
+        await roll.evaluate();
+
         // Await the card so damage application is gated on it being posted (consistent
         // with the item path). toMessage() returns the created ChatMessage.
         this._message = await roll.toMessage({
             speaker: ChatMessage.getSpeaker({ actor }),
-            flavor: `${this._type} damage`,
+            flavor: this._flavor ?? `${this._type} damage`,
         });
 
         this._roll = roll;

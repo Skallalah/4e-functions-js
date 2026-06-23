@@ -156,7 +156,13 @@ class AttackResult extends Array {
         // Pre-rolled or custom-formula damage: one shared roll for the whole group
         // (crit reconstruction only applies to the item's own damage).
         if (opts.damage || opts.formula) {
-            const base = opts.damage ?? await Damage4e.fromFormula(opts.formula, opts.type).by(this._caster).roll();
+            // Match the item's native damage-card flavor ("<item> - Damage Roll (<types>)")
+            // instead of the generic "<type> damage", so chained custom-formula hits read
+            // like the power's own card.
+            const base = opts.damage ?? await Damage4e.fromFormula(opts.formula, opts.type)
+                .by(this._caster)
+                .flavor(this._item ? Damage4e.itemFlavor(this._item) : null)
+                .roll();
             return this._applyDamage(this, base, opts);
         }
 
