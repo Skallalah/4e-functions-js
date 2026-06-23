@@ -59,6 +59,16 @@ yarn build
 
 Note: TypeScript references in the codebase are legacy artifacts and should be removed/ignored.
 
+## Testing Changes
+
+This module has no automated test suite — changes are validated by running them inside a live FoundryVTT instance against a real campaign world. Keep this loop tight and consistent:
+
+1. **Live source** — the module is symlinked into Foundry's data directory, so `src/` is served directly. Editing `src/` (or running `yarn build`) and pressing **F5** in Foundry reloads the scripts. No copy step.
+2. **When a reload isn't enough** — changes to `module.json` (adding a script, dependency, or asset) are only read at server startup, so **restart the Foundry server** for those.
+3. **Exercise the change in-game** — launch the test world, then trigger the affected power/macro on actual tokens (caster + targets) rather than reasoning about it abstractly. Cross-character effects (damage, healing, marks) only fully exercise the macro/permission path when run between two different tokens.
+4. **Error probe (preferred over copy-paste)** — run Foundry in a Chrome instance started with `--remote-debugging-port=9222`. The assistant connects via the Chrome DevTools MCP to read console errors, failed network requests, and inspect live game state (`game`, actors, effects). When a change misbehaves, capture the real stack trace through the probe instead of asking the user to transcribe it.
+5. **Verify before claiming done** — a change is "done" only after it has been run in Foundry and the probe shows no new errors. Report what was actually observed, not what should happen.
+
 ## Architecture
 
 ### Permission System Workaround
