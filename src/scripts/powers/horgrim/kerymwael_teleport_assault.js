@@ -10,12 +10,6 @@ const damageMap = [
 ]
 
 async function main(item) {
-    const target = await Target.fromCharacter(horgrim).range(5).selectTarget(item.img);
-
-    console.log(item);
-
-    if (!target) return;
-
     /*
 
     new Sequence()
@@ -39,15 +33,19 @@ async function main(item) {
 
     */
 
-    const characters = target.radius(1).get().type('enemies');
+    const characters = await Target.fromCharacter(horgrim)
+        .areaBurst(1)
+        .within(5)
+        .type('enemies')
+        .place({ icon: item.img });
+
+    if (!characters.length) return;
 
     User4e.updateTargets(characters);
 
     const roll = await item.rollAttack();
 
     console.log(roll);
-
-    damageRoll()
 
     await item.rollDamage({ fastForward: true })
 

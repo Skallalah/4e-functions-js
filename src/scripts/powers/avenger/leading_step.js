@@ -35,9 +35,9 @@ async function main(ref) {
         triggeringEnemy = Character.fromToken(adjacentEnemies[0]);
     } else {
         const [selected] = await Target.fromCharacter(avenger)
-            .range(1)
+            .melee(1)
             .type('enemies')
-            .selectCharacters(item.img);
+            .pick({ count: 1 });
 
         if (!selected) {
             ui.notifications.warn('No enemy selected.');
@@ -49,8 +49,8 @@ async function main(ref) {
 
     // Step 2: Avenger teleports 5 squares away
     const avengerDestination = await Target.fromCharacter(avenger)
-        .range(5)
-        .selectTarget(item.img);
+        .ranged(5)
+        .pickPoint(item.img);
 
     if (!avengerDestination) {
         ui.notifications.warn('No destination selected for teleport.');
@@ -65,8 +65,8 @@ async function main(ref) {
 
     // Step 3: Teleport the enemy to a square adjacent to avenger's new position
     const enemyDestination = await Target.fromCharacter(avenger)
-        .range(1)
-        .selectTarget(item.img);
+        .melee(1)
+        .pickPoint(item.img);
 
     if (!enemyDestination) {
         ui.notifications.warn('No destination selected for enemy.');

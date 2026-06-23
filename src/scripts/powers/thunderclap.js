@@ -16,20 +16,12 @@ async function main(ref) {
     const caster = Character.fromActor(ref.actor);
     const item = ref.item;
 
-    // Step 1: Select area target (burst 3 within 20)
-    const targetLocation = await Target.fromCharacter(caster)
-        .range(20)
-        .selectTarget(item.img);
-
-    if (!targetLocation) {
-        return; // User cancelled
-    }
-
-    // Step 2: Get all creatures in the burst area
-    const targets = Target.fromCoordinates(targetLocation.x, targetLocation.y)
-        .radius(3)
+    // Step 1+2: Area burst 3 within 20 — place the shared Region and return targets
+    const targets = await Target.fromCharacter(caster)
+        .areaBurst(3)
+        .within(20)
         .type('creatures')
-        .get();
+        .place({ icon: item.img });
 
     if (targets.length === 0) {
         await Chat4e.power(caster, 'Thunderclap', 'No creatures in the area of effect.');
@@ -63,16 +55,14 @@ async function main(ref) {
     const hitTargets = result.hit.map(o => o.target);
     const missTargets = result.miss.map(o => o.target);
 
-    // Step 5: Area effect visual
-    await VFX4e.custom(
-        'jb2a.impact.004.blue',
-        { x: targetLocation.x, y: targetLocation.y },
-        { 
-            scale: 3.0, // Scale for burst 3 area
-            fadeIn: 200,
-            duration: 800
-        }
-    );
+    // Step 5: Area effect visual — centered on the first hit target
+    if (targets[0]) {
+        await VFX4e.custom(
+            'jb2a.impact.004.blue',
+            targets[0].token,
+            { scale: 3.0, fadeIn: 200, duration: 800 }
+        );
+    }
 
     // Step 6: Chat message summary
     const hitCount = hitTargets.length;

@@ -16,10 +16,9 @@ The goal is to create a **fluent, self-descriptive API** that is human-readable 
 
 1. **Fluent API Design** - Code should read like natural language
    ```javascript
-   // Good: Fluent, readable
+   // Good: Fluent, readable — reads like a 4e targeting line
    Target.fromCharacter(caster)
-       .range(5)
-       .radius(2)
+       .closeBurst(2)
        .type('enemies')
        .get()
 
@@ -105,15 +104,21 @@ FoundryVTT prevents players from modifying other players' character sheets. This
    - Add new effects to EffectLibrary for reusability
    - **⚠️ Authoritative reference for `changes` keys**: [`docs/reference/foundry-4e-effects.md`](docs/reference/foundry-4e-effects.md) is the source of truth for every Active Effect modifier key, bonus type, and change mode. ALWAYS consult it before writing an effect's `changes` array. Keys are **case-sensitive** and must match exactly (e.g. defences use `system.defences.fort/ref/wil.[bonustype]`, NOT `fortitude`/`reflex`/`will` or `.value`; global attack/damage bonuses use `system.modifiers.attack/damage.[bonustype]`). Penalties and untyped bonuses use the `untyped` bonus type with ADD mode so they stack correctly per 4e rules. See [Active Effect Keys](#active-effect-keys-reference) below.
 
-4. **Target** (`src/scripts/target.js`) - Targeting system with range/radius
-   - Factory methods: `Target.fromCharacter()`, `Target.fromCoordinates()`
-   - **Fluent API** for building targeting queries:
-     - `.range(squares)` - Maximum range from origin
-     - `.radius(squares)` - Area of effect radius
-     - `.type('creatures' | 'allies' | 'enemies')` - Filter by relationship
-     - `.disposition(value)` - Set caster's disposition for filtering
-   - Interactive selection: `await target.selectTarget(icon)`, `await target.selectCharacters(icon)`
-   - Returns Character instances via `target.get()`
+4. **Target** (`src/scripts/target.js`) - Targeting system that reads like a 4e power line
+   - Factory methods: `Target.fromCharacter()`, `Target.fromCoordinates()`, `Target.fromItem(item)` (optional geometry hydration)
+   - **Shape verbs** (geometry) — express the power's targeting line:
+     - `.melee(reach = 1)` / `.ranged(r)` - direct target(s) at reach/range
+     - `.closeBurst(n)` - area emanating from the caster, radius n
+     - `.areaBurst(n).within(r)` - burst of radius n centered on a point chosen within range r
+     - `.closeBlast(x)` - axis-aligned X×X square anchored to the caster (no pivot)
+     - `.type('creatures' | 'allies' | 'enemies')` - filter by relationship
+     - `.range(squares)` / `.radius(squares)` - low-level primitives (escape hatch)
+   - **Terminal verbs** (interaction + visibility — the name makes visibility explicit):
+     - `.get()` - no UI, instant computation → `Character[]`
+     - `.pick({ count })` - interactive creature selection (native targeting + markers + X/N counter), **private** → `Character[]`
+     - `.place()` - places a shared Scene Region (visible to all), returns covered `Character[]`
+     - `.pickPoint(icon)` - selects an empty/occupied coordinate, validated by range, **private** → `Target | null`
+   - Always returns `Character` instances, never raw token/actor
 
 5. **Scene4e** (`src/scripts/scene.js`) - Spatial utilities
    - **All functions are static**
@@ -192,10 +197,10 @@ Example with Target selection:
 async function main(ref) {
     const caster = Character.fromActor(ref.actor);
 
-    // Fluent targeting API
+    // Fluent targeting API: pick a point, then collect enemies in a radius around it
     const selection = await Target.fromCharacter(caster)
-        .range(10)
-        .selectTarget('path/to/icon.webp');
+        .ranged(10)
+        .pickPoint('path/to/icon.webp');
 
     if (!selection) return; // User cancelled
 
@@ -226,11 +231,11 @@ async function main(ref) {
     }
 
     const targets = await Target.fromCharacter(paladin)
-        .range(1)
+        .melee(1)
         .type('allies')
-        .selectCharacters(ref.item.img);
+        .pick({ count: 1 });
 
-    if (!targets.length || targets.length !== 1) return;
+    if (targets.length !== 1) return;
 
     const target = targets[0];
     const targetSurgeValue = target.getSurges().surgeValue;
@@ -269,11 +274,11 @@ async function main(ref) {
 
     // Fluent targeting: select 1 ally within 1 square using power's icon
     const targets = await Target.fromCharacter(paladin)
-        .range(1)
+        .melee(1)
         .type('allies')
-        .selectCharacters(ref.item.img);
+        .pick({ count: 1 });
 
-    if (!targets.length || targets.length !== 1) return;
+    if (targets.length !== 1) return;
 
     const target = targets[0];
     const targetSurgeValue = target.getSystem()?.details.surgeValue;
@@ -318,8 +323,8 @@ async function main(ref) {
     const caster = Character.fromActor(ref.actor);
 
     const target = await Target.fromCharacter(caster)
-        .range(10)
-        .selectTarget(ref.item.img);
+        .ranged(10)
+        .pickPoint(ref.item.img);
 
     if (!target) return;
 
@@ -411,9 +416,9 @@ async function main(ref) {
 
     // Select targets
     const targets = await Target.fromCharacter(caster)
-        .range(10)
+        .ranged(10)
         .type('enemies')
-        .selectCharacters(item.img);
+        .pick({ count: 1 });
 
     if (!targets || targets.length === 0) return;
 
@@ -443,9 +448,9 @@ async function main(ref) {
 
     // Select target
     const [target] = await Target.fromCharacter(caster)
-        .range(20)
+        .ranged(20)
         .type('enemies')
-        .selectCharacters(item.img);
+        .pick({ count: 1 });
 
     if (!target) return;
 
@@ -484,9 +489,9 @@ async function main(ref) {
 
     // Primary target
     const [primaryTarget] = await Target.fromCharacter(caster)
-        .range(20)
+        .ranged(20)
         .type('enemies')
-        .selectCharacters(item.img);
+        .pick({ count: 1 });
 
     if (!primaryTarget) return;
     attackedTargets.add(primaryTarget.actor.id);
@@ -505,7 +510,7 @@ async function main(ref) {
 
         while (continueChain) {
             const potentialTargets = Target.fromCharacter(currentOrigin)
-                .range(10)
+                .ranged(10)
                 .type('enemies')
                 .get()
                 .filter(t => !attackedTargets.has(t.actor.id));
@@ -513,9 +518,9 @@ async function main(ref) {
             if (potentialTargets.length === 0) break;
 
             const [secondaryTarget] = await Target.fromCharacter(currentOrigin)
-                .range(10)
+                .ranged(10)
                 .type('enemies')
-                .selectCharacters(item.img);
+                .pick({ count: 1 });
 
             if (!secondaryTarget || attackedTargets.has(secondaryTarget.actor.id)) break;
 
@@ -656,12 +661,12 @@ get() {
 }
 
 /**
- * Select a target interactively with range validation
+ * Select a point interactively with range validation
  *
  * @param {string} icon Path to the icon for the targeting cursor
- * @returns {Promise<Target | null>} The selected target, or null if cancelled
+ * @returns {Promise<Target | null>} Target centered on the chosen point, or null if cancelled
  */
-async selectTarget(icon) {
+async pickPoint(icon) {
     // ...
 }
 ```
@@ -903,7 +908,7 @@ const targets = Scene4e.getCurrentScenesTokens()
 ```javascript
 // Good
 const targets = Target.fromCharacter(caster)
-    .range(5)
+    .closeBurst(5)
     .type('enemies')
     .get();
 ```
@@ -975,6 +980,16 @@ Required FoundryVTT modules (defined in `src/module.json`):
 
 System requirement: **dnd4e**
 
+**Platform requirement: FoundryVTT v13+.** The targeting area system relies on Scene Regions (`canvas.regions` / Region documents) and the UI uses ApplicationV2, both of which require v13. Use v13 APIs (e.g. `canvas.grid.getOffset`/`getTopLeftPoint`, `foundry.applications.api.ApplicationV2`).
+
+## UI Components (HTML interface)
+
+**Build any HTML UI on `ApplicationV2`** (`foundry.applications.api.ApplicationV2`), the v13 default that all of Foundry's own UI uses. **Do NOT inject raw DOM** (`document.createElement` + `appendChild` to `body`/`#interface`) for module UI — that bypasses Foundry's lifecycle/state management, is undocumented, and is brittle across updates. Raw DOM is only acceptable in throwaway macros, never in the module's classes.
+
+- **Floating / non-modal panel** (e.g. a selection counter that must keep the canvas clickable underneath): subclass `ApplicationV2` with `static DEFAULT_OPTIONS = { window: { frame: false, positioned: false } }`, build markup by overriding `_renderHTML()` + `_replaceHTML()` (no Handlebars template files needed), wire interactions and lifecycle in `_onRender()` / `_onClose()`. Show with `await app.render({ force: true })`, dismiss with `await app.close()`. Reference: `TargetSelectionPanel` in `src/scripts/target.js`.
+- **Canvas-anchored UI** that must follow a token/position: use a **HUD** (extend the relevant `hudClass`, like core's `TokenHUD`), not a free-floating Application.
+- **Gotcha:** never use `static #privateMethod` as an `actions` handler — ApplicationV2 invokes action handlers with `this` bound to the instance, which fails the private-static brand check. Wire `data-action` listeners manually in `_onRender()` instead.
+
 ## Module Registration
 
 `src/module.json` defines scripts loaded at initialization. The following scripts must be included in order:
@@ -1043,6 +1058,8 @@ Releases via GitHub Actions (`.github/workflows/publish.yml`):
 - **All utility class methods must be static** - Required for macro accessibility
 - **Use fluent APIs** - Chain methods, make code self-documenting
 - **Never bypass abstractions** - Extend classes instead of direct access
+- **HTML UI = ApplicationV2** - Never raw-DOM-inject module UI; see "UI Components"
+- **Target FoundryVTT v13+** - Scene Regions + ApplicationV2 + v13 grid APIs
 - Effect durations tie to combat rounds and initiative order
 - All cross-character modifications go through Helper4e → macros
 - Use `replaceEffect()` for unique effects (like marks)

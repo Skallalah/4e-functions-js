@@ -23,9 +23,9 @@ async function main(ref) {
         return;
     }
 
-    const targets = await Target.fromCharacter(paladin).range(1).type('allies').selectCharacters(ref.item.img);
+    const targets = await Target.fromCharacter(paladin).melee(1).type('allies').pick({ count: 1 });
 
-    if (!targets.length && targets.length !== 1) return;
+    if (targets.length !== 1) return;
 
     const target = targets[0];
     const targetSurgeValue = target.getSystem()?.details.surgeValue;

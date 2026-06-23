@@ -8,7 +8,7 @@ const grundWisMod = grund.getSystem()?.abilities?.wis?.mod;
 // main functions
 
 async function applyMainHeal(item) {
-    const targets = await Target.fromCharacter(grund).range(5).selectCharacters(item.img);
+    const targets = await Target.fromCharacter(grund).ranged(5).pick({ count: 1 });
 
     if (!targets?.length) return;
 
@@ -31,7 +31,7 @@ async function applyMainHeal(item) {
 }
 
 async function applyTempHealingToSpiritAdjacentTokens() {
-    const adjacents = Target.fromCharacter(spirit).radius(1).type('allies').get();
+    const adjacents = Target.fromCharacter(spirit).closeBurst(1).type('allies').get();
 
     if (!adjacents.length) return;
 

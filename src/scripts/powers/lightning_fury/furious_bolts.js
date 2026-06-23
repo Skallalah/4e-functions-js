@@ -33,8 +33,8 @@ async function main(ref) {
 
     // --- Primary ---
     const primarySel = await Target.fromCharacter(caster)
-        .range(20).type('enemies')
-        .selectCharacters({ count: 1, icon: item.img });
+        .ranged(20).type('enemies')
+        .pick({ count: 1 });
     if (!primarySel.length) { ui.notifications.warn('No target selected.'); return; }
 
     const primary = primarySel[0];
@@ -59,8 +59,8 @@ async function main(ref) {
         if (candidates.length === 0) break;
 
         const sel = await Target.fromCharacter(origin)
-            .range(10).type('allies')
-            .selectCharacters({ count: 1, icon: item.img });
+            .ranged(10).type('allies')
+            .pick({ count: 1 });
         if (!sel.length) break;
 
         const next = sel[0];

@@ -6,6 +6,23 @@
  */
 class VFX4e {
     /**
+     * Single JB2A asset used as the selection marker (rotating runic ring).
+     * Default aligned with an asset already referenced in PowerSources
+     * (so it is installed). One-line swap if another asset is preferred
+     * (validate in the Sequencer Database Viewer).
+     *
+     * @type {string}
+     */
+    static TARGET_MARKER_ASSET = 'jb2a.magic_signs.rune.abjuration.loop.blue';
+
+    /**
+     * Identifier of the range highlight layer (GridHighlight, client-local).
+     *
+     * @type {string}
+     */
+    static RANGE_HIGHLIGHT_ID = 'target-range';
+
+    /**
      * Power source theme configurations
      * Each theme defines default visual effect files for different effect types
      */
@@ -303,6 +320,87 @@ class VFX4e {
         }
 
         return sequence.play();
+    }
+
+    /**
+     * Place a persistent rotating selection marker on a token.
+     * Idempotent: re-places cleanly if already present (named per token).
+     *
+     * @param {TokenDocument | Token} token The targeted token
+     * @returns {void}
+     */
+    static targetMarker(token) {
+        const id = token.id;
+        new Sequence()
+            .effect()
+                .file(VFX4e.TARGET_MARKER_ASSET)
+                .atLocation(token)
+                .scaleToObject(1.6)
+                .persist()
+                .name(`target-marker-${id}`)
+                .fadeIn(150)
+                .fadeOut(150)
+                .loopProperty('sprite', 'rotation', { from: 0, to: 360, duration: 8000 })
+                .belowTokens(false)
+            .play();
+    }
+
+    /**
+     * Remove the selection marker from a token.
+     *
+     * @param {TokenDocument | Token} token The token concerned
+     * @returns {void}
+     */
+    static clearTargetMarker(token) {
+        Sequencer.EffectManager.endEffects({ name: `target-marker-${token.id}` });
+    }
+
+    /**
+     * Remove all selection markers from the scene (cleanup safety net).
+     *
+     * @returns {void}
+     */
+    static clearAllTargetMarkers() {
+        Sequencer.EffectManager.endEffects({ name: 'target-marker-*' });
+    }
+
+    /**
+     * Paint, locally on the client, the range zone around an origin
+     * (visual aid: "where I can click"). Centered square on a square grid.
+     *
+     * @param {{x:number, y:number}} origin Origin point (pixels)
+     * @param {number} range Range radius in squares
+     * @param {Object} [options]
+     * @param {string} [options.color='#33aaff'] Fill color
+     * @param {number} [options.alpha=0.18] Fill opacity
+     * @param {number} [options.border=0x33aaff] Border color
+     * @returns {void}
+     */
+    static rangeHighlight(origin, range, options = {}) {
+        const { color = '#33aaff', alpha = 0.18, border = 0x33aaff } = options;
+        const id = VFX4e.RANGE_HIGHLIGHT_ID;
+
+        VFX4e.clearRangeHighlight();
+        canvas.interface.grid.addHighlightLayer(id);
+
+        for (const cell of Scene4e.cellsWithin(origin, range)) {
+            canvas.interface.grid.highlightPosition(id, {
+                x: cell.x,
+                y: cell.y,
+                color,
+                alpha,
+                border
+            });
+        }
+    }
+
+    /**
+     * Clear the range highlight layer.
+     *
+     * @returns {void}
+     */
+    static clearRangeHighlight() {
+        canvas.interface.grid.clearHighlightLayer(VFX4e.RANGE_HIGHLIGHT_ID);
     }
 
     /**
