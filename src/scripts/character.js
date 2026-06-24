@@ -201,6 +201,26 @@ class Character {
         };
     }
 
+    /**
+     * Numeric value of one of the actor's defences.
+     *
+     * @param {'ac'|'fort'|'ref'|'wil'} key System defence key (note: Will is 'wil')
+     * @returns {number} The defence value, or 0 if unavailable
+     */
+    getDefense(key) {
+        return this.getSystem()?.defences?.[key]?.value ?? 0;
+    }
+
+    /**
+     * Token image source for this character (falls back to the actor portrait).
+     *
+     * @returns {string}
+     */
+    get img() {
+        const token = this._actor.getActiveTokens(true)?.[0];
+        return token?.document?.texture?.src ?? this._actor.img;
+    }
+
     // Healing Surges
 
     /**

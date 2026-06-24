@@ -15,6 +15,7 @@
     "scripts/target.js",
     "scripts/user.js",
     "scripts/attack.js",
+    "scripts/damage-card.js",
     "scripts/chat.js",
     "scripts/vfx.js"
   ],

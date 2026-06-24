@@ -105,6 +105,10 @@ class AttackResult extends Array {
      * @param {boolean} [opts.trueDamage] Ignore resistances
      * @param {number} [opts.multiplier] Application multiplier (0.5 half, 2 double)
      * @param {Damage4e} [opts.damage] A pre-rolled Damage4e to reuse (shared hit/miss roll)
+     * @param {boolean} [opts.resolutionCard] Post an interactive GM resolution
+     *   card instead of applying immediately (rolls normal + crit on the item path)
+     * @param {boolean} [opts.halfOnMiss] When the card applies a MISS, deal half
+     *   the normal damage instead of none (resolutionCard only)
      * @returns {AttackResult} this
      */
     applyDamage(opts = {}) {
@@ -165,6 +169,9 @@ class AttackResult extends Array {
 
     /** @private */
     async _runDamage(opts) {
+        // Opt-in: post an interactive resolution card instead of applying now.
+        if (opts.resolutionCard) return this._postResolutionCard(opts);
+
         // Pre-rolled or custom-formula damage: one shared roll for the whole group
         // (crit reconstruction only applies to the item's own damage).
         if (opts.damage || opts.formula) {
@@ -215,6 +222,49 @@ class AttackResult extends Array {
             try { await o.target.damage(dmg); }
             catch (err) { this.errors.push(err); console.error('applyDamage failed for', o.target?.name, err); }
         }
+    }
+
+    /**
+     * Roll damage once and post an interactive resolution card instead of
+     * applying. Item path rolls both normal and crit (so the GM can toggle any
+     * target to crit); the formula path rolls normal only (crit toggle disabled).
+     * Does nothing if the damage dialog was cancelled.
+     *
+     * @private
+     * @param {Object} opts applyDamage options
+     * @param {boolean} [opts.fastForward=true]
+     * @param {string} [opts.formula]
+     * @param {string} [opts.type]
+     * @param {boolean} [opts.halfOnMiss=false]
+     * @returns {Promise<void>}
+     */
+    async _postResolutionCard(opts) {
+        const caster = this._caster ?? (this._item?.actor ? Character.fromActor(this._item.actor) : null);
+        if (!caster) {
+            console.warn('AttackResult._postResolutionCard: no caster; cannot post card.');
+            return;
+        }
+
+        const isFormula = !!opts.formula;
+        const normal = isFormula
+            ? await Damage4e.fromFormula(opts.formula, opts.type).by(caster).roll()
+            : await Damage4e.fromItem(this._item).roll({ fastForward: opts.fastForward });
+
+        if (!normal.roll) return; // dialog cancelled -> nothing to resolve
+
+        const crit = isFormula
+            ? null
+            : await Damage4e.fromItem(this._item).critical().roll({ fastForward: opts.fastForward });
+
+        await DamageCard4e.post({
+            caster,
+            powerName: this._item?.name ?? 'Damage',
+            damageType: opts.type ?? normal.type ?? 'damage',
+            normal,
+            crit,
+            outcomes: Array.from(this),
+            halfOnMiss: !!opts.halfOnMiss
+        });
     }
 
     /** @private */
