@@ -185,7 +185,12 @@ class Target {
         const range = Number(sys.range) || 0;
 
         switch (sys.rangeType) {
+            case 'touch':
+            case 'reach':
             case 'melee':       return target.melee(range || 1);
+            // "Melee or Ranged weapon" powers: use the configured range when the
+            // weapon is ranged (crossbow/sling), otherwise treat it as melee reach.
+            case 'weapon':      return range > 0 ? target.ranged(range) : target.melee(range || 1);
             case 'range':
             case 'ranged':      return target.ranged(range);
             case 'closeBurst':  return target.closeBurst(area);

@@ -82,10 +82,46 @@ class Effect4e {
     }
 
     /**
+     * Build effect data for a standard dnd4e condition, sourced from the
+     * system's own status-effect registry (`CONFIG.statusEffects`) instead of
+     * hand-copied data. The returned data sets the `statuses` array, so the
+     * system treats it as the real condition: the correct icon shows on the
+     * token and condition-driven rules fire (e.g. a `dazed`/`prone` target
+     * granting combat advantage, marks writing `system.marker`). Name,
+     * description and icon are the localized system values.
+     *
+     * Feed the result to {@link Effect4e.createEffect} (directly, or via
+     * `AttackResult.applyEffect({ data })`) to attach a combat duration.
+     *
+     * @param {string} statusId The dnd4e status id, e.g. `'dazed'`, `'slowed'`,
+     *   `'weakened'`, `'immobilized'`, `'prone'`, `'mark_1'`. The full list is
+     *   `CONFIG.statusEffects` (ids come from `CONFIG.DND4E.statusEffect`).
+     * @param {Object} [overrides={}] Fields merged over the system data — e.g. a
+     *   custom `description`, a tweaked `name`, or extra `changes`.
+     * @returns {Object} Effect data ready for {@link Effect4e.createEffect}.
+     */
+    static fromStatus(statusId, overrides = {}) {
+        const status = CONFIG.statusEffects.find(s => s.id === statusId);
+
+        if (!status) {
+            throw Error(`Unknown dnd4e status '${statusId}'. See CONFIG.statusEffects for valid ids.`);
+        }
+
+        return {
+            name: game.i18n.localize(status.name),
+            description: status.description ? game.i18n.localize(status.description) : '',
+            img: status.img,
+            statuses: [statusId],
+            changes: status.changes ?? [],
+            ...overrides
+        };
+    }
+
+    /**
      * Create an effect from data with the corresponding duration
      *
      * @param {Object} data The effect data, with name, description and icon
-     * @param {'endOfUserTurn'} durationType
+     * @param {'endOfUserTurn'|'startOfUserTurn'|'endOfTargetTurn'|'startOfTargetTurn'|'saveEnd'} durationType
      * @param {Character} origin
      */
     static createEffect(data, durationType, origin) {
@@ -125,15 +161,21 @@ class EffectLibrary {
         icon: 'icons/magic/light/orb-container-orange.webp'
     }
 
-    static STUNNED = {
-        name: 'Stunned',
-        description: `<p><strong>Stunned</strong>: You can't take actions. You grant combat advantage. You can't flank.</p>`,
-        icon: 'icons/conditions/daze-unconscious.svg'
+    /**
+     * Standard "Stunned" condition, sourced from the system so it carries the
+     * real `stunned` status (icon, granting combat advantage, etc.).
+     * @returns {Object}
+     */
+    static get STUNNED() {
+        return Effect4e.fromStatus('stunned');
     }
 
-    static DAZED = {
-        name: 'Dazed',
-        description: `<p><strong>Dazed</strong>: You can take only a standard action, a minor action, or a move action on your turn (you can't take all three). You grant combat advantage.</p>`,
-        icon: 'icons/conditions/daze.svg'
+    /**
+     * Standard "Dazed" condition, sourced from the system so it carries the
+     * real `dazed` status (icon, granting combat advantage, etc.).
+     * @returns {Object}
+     */
+    static get DAZED() {
+        return Effect4e.fromStatus('dazed');
     }
 }

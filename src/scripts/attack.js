@@ -77,6 +77,18 @@ class AttackResult extends Array {
         return AttackResult.of(this.filter(o => Attack4e.isMiss(o)), this._item, this._caster);
     }
 
+    /**
+     * Subset of outcomes matching a predicate, as a fresh AttackResult (empty
+     * queue) that keeps the attack context — so the operation chain
+     * (applyDamage/applyEffect/applyVFX/run) keeps working on the filtered set.
+     *
+     * @param {(outcome: AttackOutcome) => boolean} predicate
+     * @returns {AttackResult}
+     */
+    where(predicate) {
+        return AttackResult.of(this.filter(predicate), this._item, this._caster);
+    }
+
     /** @returns {boolean} */
     hasHit() { return this.some(o => Attack4e.isHit(o)); }
     /** @returns {boolean} */
@@ -231,6 +243,7 @@ class Attack4e {
      * @property {AttackState} state - Outcome against this target (see AttackState)
      * @property {number} total - Total of the attack roll for THIS target
      * @property {'ac'|'fort'|'ref'|'will'} defense - Defense targeted
+     * @property {boolean} combatAdvantage - Whether combat advantage was applied to THIS target's attack roll (read from the roll, i.e. the dialog checkbox or the system's auto-detection)
      * @property {Roll} roll - This target's sub-roll (roll.rollArray[i]), or the full roll as fallback
      */
 
@@ -325,6 +338,7 @@ class Attack4e {
                 state: AttackState.UNKNOWN,
                 total: roll.total,
                 defense,
+                combatAdvantage: false,
                 roll
             }));
 
@@ -338,6 +352,11 @@ class Attack4e {
             state: this._toState(entry.hitstate),
             total: entry.total,
             defense: entry.def,
+            // Combat advantage is read from the roll's situational bonuses (the
+            // `@comAdv` part the dialog checkbox / system auto-detection adds).
+            // Caveat: the "collapseSituationalBonus" system setting folds these
+            // into a single number, hiding `@comAdv` — leave that off to detect CA.
+            combatAdvantage: typeof entry.expression === 'string' && entry.expression.includes('@comAdv'),
             roll: roll.rollArray?.[index] ?? roll
         }));
 
