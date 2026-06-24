@@ -39,6 +39,8 @@ async function main(ref) {
 
     const primary = primarySel[0];
     attacked.add(primary.id);
+  
+    await VFX4e.beam(caster, primary, 'LIGHTNING');
 
     const primaryResult = await attack.rollAttack([primary], { fastForward: true });
     await primaryResult.hit
@@ -77,7 +79,7 @@ async function main(ref) {
         if (secondary.hasHit()) {
             hitTargets.push(next);
             await secondary.hit
-                .applyDamage({ formula: `2d4 + ${chaMod}`, type: 'lightning' })
+                .applyDamage({ formula: `2d4 + @chaMod`, type: 'lightning' })
                 .applyVFX({ type: 'LIGHTNING' })
                 .run();
             origin = next;
